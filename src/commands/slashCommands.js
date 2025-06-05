@@ -184,7 +184,7 @@ export class SlashCommandHandler {
         },
         {
           name: '📊 斜杠命令',
-          value: '• `/stats` - 查看个人数据\n• `/shop` - 查看DOL商店\n• `/topup` - 购买DOL\n• `/help` - 查看帮助',
+          value: '• `/stats` - 查看个人数据\n• `/shop` - 查看DOL商店\n• `/topup` - 购买DOL\n• `/leaderboard` - 查看亲密度排行榜\n• `/help` - 查看帮助',
           inline: false
         },
         {
@@ -201,6 +201,61 @@ export class SlashCommandHandler {
       .setFooter({ text: '有任何问题都可以直接问我哦~ 💕' });
 
     await interaction.reply({ embeds: [helpEmbed] });
+  }
+
+  // 处理leaderboard命令
+  static async handleLeaderboard(interaction) {
+    try {
+      const leaderboard = await ProfileService.getLeaderboard(10);
+      
+      if (!leaderboard || leaderboard.length === 0) {
+        return interaction.reply('📊 排行榜暂时为空，快来和我聊天成为第一名吧！ 💕');
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor('#FFD700')
+        .setTitle('🏆 亲密度排行榜')
+        .setDescription('看看谁最受AI男友喜爱~ 💖')
+        .setFooter({ text: '继续聊天提升你的排名吧！' })
+        .setTimestamp();
+
+      // 生成排行榜内容
+      let leaderboardText = '';
+      const medals = ['🥇', '🥈', '🥉'];
+      
+      leaderboard.forEach((user, index) => {
+        const medal = index < 3 ? medals[index] : `${index + 1}.`;
+        const intimacyLevel = this.getIntimacyLevel(user.intimacy);
+        
+        // 隐藏用户ID，只显示部分字符
+        const maskedUserId = user.user_id.substring(0, 4) + '***' + user.user_id.slice(-2);
+        
+        leaderboardText += `${medal} **用户${maskedUserId}**\n`;
+        leaderboardText += `   ${intimacyLevel.emoji} ${user.intimacy}点亲密度 (${intimacyLevel.title})\n`;
+        leaderboardText += `   📈 ${user.total_messages || 0}条消息\n\n`;
+      });
+
+      embed.addFields({
+        name: '💕 排行榜',
+        value: leaderboardText,
+        inline: false
+      });
+
+      // 显示当前用户排名
+      const userRank = await ProfileService.getUserRank(interaction.user.id);
+      if (userRank) {
+        embed.addFields({
+          name: '🎯 你的排名',
+          value: `第 **${userRank.rank}** 名 | ${userRank.intimacy}点亲密度`,
+          inline: false
+        });
+      }
+
+      await interaction.reply({ embeds: [embed] });
+    } catch (error) {
+      console.error('Leaderboard命令处理失败:', error);
+      await interaction.reply('❌ 获取排行榜时出现错误，请稍后再试！');
+    }
   }
 
   // 获取亲密度等级

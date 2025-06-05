@@ -233,6 +233,9 @@ function setupBotEvents(client) {
         case 'shop':
           await SlashCommandHandler.handleShop(interaction);
           break;
+        case 'leaderboard':
+          await SlashCommandHandler.handleLeaderboard(interaction);
+          break;
         case 'help':
           await SlashCommandHandler.handleHelp(interaction);
           break;

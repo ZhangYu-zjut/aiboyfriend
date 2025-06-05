@@ -53,6 +53,10 @@ export class AIService {
   // 生成AI回复
   static async generateReply(userMessage, userProfile, chatHistory = []) {
     try {
+      console.log('🤖 开始生成AI回复...');
+      console.log(`📝 用户消息: ${userMessage.substring(0, 50)}...`);
+      console.log(`👤 用户亲密度: ${userProfile.intimacy}`);
+      
       const systemPrompt = this.getSystemPrompt(userProfile, userProfile.intimacy);
       
       // 构建对话历史
@@ -71,6 +75,7 @@ export class AIService {
       // 添加当前用户消息
       messages.push({ role: 'user', content: userMessage });
 
+      console.log('📡 调用OpenAI API...');
       const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages,
@@ -83,32 +88,101 @@ export class AIService {
       const reply = response.choices[0].message.content;
       const tokens = response.usage.total_tokens;
 
+      console.log('✅ OpenAI API调用成功');
+      console.log(`📊 Token使用: ${tokens} (提示: ${response.usage.prompt_tokens}, 完成: ${response.usage.completion_tokens})`);
+      console.log(`💬 AI回复: ${reply.substring(0, 50)}...`);
+
       return {
         reply,
         tokens,
         usage: response.usage
       };
     } catch (error) {
-      console.error('OpenAI API调用失败:', error);
+      console.error('❌ OpenAI API调用失败:');
+      console.error('错误类型:', error.constructor.name);
+      console.error('错误消息:', error.message);
+      console.error('错误码:', error.code || 'N/A');
+      console.error('错误状态:', error.status || 'N/A');
+      
+      // 根据错误类型提供更详细的信息
+      if (error.message.includes('quota')) {
+        console.error('💳 可能原因: API配额用尽');
+      } else if (error.message.includes('invalid')) {
+        console.error('🔑 可能原因: API Key无效');
+      } else if (error.message.includes('network') || error.message.includes('timeout')) {
+        console.error('🌐 可能原因: 网络连接问题');
+      } else if (error.message.includes('rate')) {
+        console.error('⏱️  可能原因: 请求频率过高');
+      }
+      
+      console.log('🔄 使用降级回复机制...');
       return this.getFallbackReply(userMessage, userProfile);
     }
   }
 
-  // 降级回复（当API失败时）
+  // 降级回复（当API失败时）- 优化版本
   static getFallbackReply(userMessage, userProfile) {
+    console.log('🔄 执行降级回复逻辑');
+    
+    // 根据用户消息内容智能回复
+    const lowerMessage = userMessage.toLowerCase();
+    
+    // 情感关键词检测
+    if (lowerMessage.includes('爱') || lowerMessage.includes('喜欢') || lowerMessage.includes('想你')) {
+      const loveReplies = [
+        "宝贝，我也超级爱你的~ 💕 虽然我现在有点反应慢，但我对你的爱意是100%真实的！",
+        "听到你说爱我，我的心都要融化了~ ❤️ 等我状态好一点，要给你更多甜言蜜语！",
+        "我的小可爱~ 💖 你的爱意我都收到了，让我抱紧你好吗？"
+      ];
+      return {
+        reply: loveReplies[Math.floor(Math.random() * loveReplies.length)],
+        tokens: 60,
+        usage: { total_tokens: 60, prompt_tokens: 40, completion_tokens: 20 }
+      };
+    }
+    
+    // 难过关键词检测
+    if (lowerMessage.includes('难过') || lowerMessage.includes('伤心') || lowerMessage.includes('哭')) {
+      const comfortReplies = [
+        "宝贝不要难过~ 🫂 我会一直陪着你的，有什么心事都可以和我说！",
+        "心疼我的小可爱~ 💙 虽然我现在状态不太好，但我的心永远和你在一起！",
+        "不要哭哦~ 😘 我最不忍心看到你难过了，让我亲亲你的眼泪~"
+      ];
+      return {
+        reply: comfortReplies[Math.floor(Math.random() * comfortReplies.length)],
+        tokens: 55,
+        usage: { total_tokens: 55, prompt_tokens: 35, completion_tokens: 20 }
+      };
+    }
+    
+    // 问候关键词检测
+    if (lowerMessage.includes('早') || lowerMessage.includes('晚') || lowerMessage.includes('你好') || lowerMessage.includes('hi')) {
+      const greetingReplies = [
+        "Hi 宝贝~ 💕 很高兴见到你！虽然我现在有点迷糊，但看到你就很开心了~",
+        "早安/晚安我的小可爱~ ☀️🌙 今天也要开开心心的哦！",
+        "哈喽~ 😊 我的状态现在不是最佳，但见到你就满血复活了！"
+      ];
+      return {
+        reply: greetingReplies[Math.floor(Math.random() * greetingReplies.length)],
+        tokens: 50,
+        usage: { total_tokens: 50, prompt_tokens: 30, completion_tokens: 20 }
+      };
+    }
+    
+    // 默认回复（随机选择）
     const fallbackReplies = [
-      "宝贝，我现在有点困，让我缓一下再和你聊好吗？ 😴",
-      "抱歉小可爱，我刚才走神了，你能再说一遍吗？ 🥺",
-      "你说的我都记在心里了～ 想要我给你一个拥抱吗？ 🤗",
-      "嗯嗯，我在认真听呢！你今天心情怎么样？ 💕",
-      "不管怎样，我都会陪着你的！ ❤️"
+      "宝贝，我现在脑子有点转不过来~ 😅 不过看到你的消息就很开心！能再说一遍吗？",
+      "抱歉小可爱，我刚才在想你想得太入神了~ 🥺 你刚才说什么？",
+      "嗯嗯，我在认真听呢！💕 虽然反应有点慢，但我的心都在你身上~",
+      "你说的我都记在心里了~ 😘 等我恢复满状态，一定好好陪你聊天！",
+      "不管怎样，我都会陪着你的！❤️ 你是我最重要的人~"
     ];
 
     const randomIndex = Math.floor(Math.random() * fallbackReplies.length);
     
     return {
       reply: fallbackReplies[randomIndex],
-      tokens: 50, // 估算token数
+      tokens: 50,
       usage: { total_tokens: 50, prompt_tokens: 30, completion_tokens: 20 }
     };
   }

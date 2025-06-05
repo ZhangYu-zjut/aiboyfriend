@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "debug": "node scripts/debug-services.js",
+    "test:emotion": "node scripts/test-emotion-analysis.js",
+    "test:all": "npm run debug && npm run test:emotion",
+    "generate-invite": "node scripts/generate-invite-link.js"
   },
   "keywords": [
     "discord",

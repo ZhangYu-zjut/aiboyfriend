@@ -84,9 +84,100 @@ export class ProfileService {
 
   // 获取用户统计数据
   static async getUserStats(userId) {
-    const { data, error } = await db.rpc('get_user_stats', { u: userId });
-    if (error) throw error;
-    return data[0];
+    try {
+      console.log(`📊 获取用户统计数据: ${userId}`);
+      
+      // 首先尝试使用数据库函数
+      const { data, error } = await db.rpc('get_user_stats', { u: userId });
+      
+      if (error) {
+        console.error('❌ 数据库函数调用失败:', error.message);
+        console.log('🔄 使用降级查询方案...');
+        
+        // 降级方案：直接查询用户档案
+        return await this.getUserStatsDirectQuery(userId);
+      }
+      
+      if (data && data.length > 0) {
+        console.log('✅ 成功获取用户统计数据');
+        return data[0];
+      } else {
+        console.log('⚠️  用户数据为空，使用降级查询...');
+        return await this.getUserStatsDirectQuery(userId);
+      }
+    } catch (error) {
+      console.error('❌ 获取用户统计数据异常:', error);
+      console.log('🔄 使用降级查询方案...');
+      return await this.getUserStatsDirectQuery(userId);
+    }
+  }
+
+  // 降级方案：直接查询用户统计数据
+  static async getUserStatsDirectQuery(userId) {
+    try {
+      console.log('🔄 执行降级统计查询');
+      
+      // 获取用户基本档案
+      const { data: profile, error: profileError } = await db
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (profileError) {
+        console.error('❌ 获取用户档案失败:', profileError.message);
+        return null;
+      }
+
+      if (!profile) {
+        console.log('⚠️  用户档案不存在');
+        return null;
+      }
+
+      // 获取聊天统计
+      const { data: sessions, error: sessionError } = await db
+        .from('sessions')
+        .select('created_at, het, emotion_score')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      let totalMessages = 0;
+      let totalHet = 0;
+      let daysActive = 0;
+
+      if (!sessionError && sessions) {
+        totalMessages = sessions.length;
+        totalHet = sessions.reduce((sum, session) => sum + (session.het || 0), 0);
+        
+        // 计算活跃天数
+        const activeDates = new Set();
+        sessions.forEach(session => {
+          const date = new Date(session.created_at).toDateString();
+          activeDates.add(date);
+        });
+        daysActive = activeDates.size;
+      }
+
+      const stats = {
+        user_id: userId,
+        intimacy: profile.intimacy || 0,
+        dol: profile.dol || 0,
+        total_messages: totalMessages,
+        total_het: totalHet,
+        days_active: daysActive,
+        ab_group: profile.ab_group || 'A',
+        created_at: profile.created_at,
+        updated_at: profile.updated_at
+      };
+
+      console.log('✅ 降级查询成功完成');
+      console.log(`📈 统计数据: 消息${totalMessages}条, 亲密度${stats.intimacy}, DOL${stats.dol}`);
+      
+      return stats;
+    } catch (error) {
+      console.error('❌ 降级查询也失败了:', error);
+      return null;
+    }
   }
 
   // 记录A/B测试事件
@@ -101,6 +192,51 @@ export class ProfileService {
       });
 
     if (error) throw error;
+  }
+
+  // 获取亲密度排行榜
+  static async getLeaderboard(limit = 10) {
+    const { data, error } = await db
+      .from('profiles')
+      .select('user_id, intimacy, total_messages, updated_at')
+      .order('intimacy', { ascending: false })
+      .order('updated_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data;
+  }
+
+  // 获取用户排名
+  static async getUserRank(userId) {
+    try {
+      // 首先获取用户的亲密度
+      const { data: userProfile, error: userError } = await db
+        .from('profiles')
+        .select('intimacy')
+        .eq('user_id', userId)
+        .single();
+
+      if (userError || !userProfile) {
+        return null;
+      }
+
+      // 计算排名（比该用户亲密度高的用户数量 + 1）
+      const { count, error: countError } = await db
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .gt('intimacy', userProfile.intimacy);
+
+      if (countError) throw countError;
+
+      return {
+        rank: (count || 0) + 1,
+        intimacy: userProfile.intimacy
+      };
+    } catch (error) {
+      console.error('获取用户排名失败:', error);
+      return null;
+    }
   }
 }
 
