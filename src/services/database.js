@@ -3,6 +3,30 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 
+// 🔍 调试输出 - 检查环境变量
+console.log('=== 🔍 Supabase配置调试 ===');
+console.log('SUPABASE_URL存在:', !!supabaseUrl);
+console.log('SUPABASE_URL长度:', supabaseUrl ? supabaseUrl.length : 0);
+console.log('SUPABASE_URL预览:', supabaseUrl ? supabaseUrl.substring(0, 30) + '...' : 'undefined');
+
+console.log('SUPABASE_KEY存在:', !!supabaseKey);
+console.log('SUPABASE_KEY长度:', supabaseKey ? supabaseKey.length : 0);
+console.log('SUPABASE_KEY预览:', supabaseKey ? supabaseKey.substring(0, 20) + '...' : 'undefined');
+
+console.log('所有环境变量名称:', Object.keys(process.env).filter(key => key.includes('SUPABASE')));
+console.log('===========================');
+
+// 添加错误检查
+if (!supabaseUrl) {
+  console.error('❌ 错误: SUPABASE_URL未配置!');
+  console.log('💡 请在Railway中添加SUPABASE_URL环境变量');
+}
+
+if (!supabaseKey) {
+  console.error('❌ 错误: SUPABASE_ANON_KEY或SUPABASE_SERVICE_ROLE_KEY未配置!');
+  console.log('💡 请在Railway中添加Supabase密钥环境变量');
+}
+
 export const db = createClient(supabaseUrl, supabaseKey);
 
 // 用户档案相关操作
