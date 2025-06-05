@@ -1,0 +1,35 @@
+{
+  "name": "aiboyfriend",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "discord",
+    "ai",
+    "chatbot",
+    "boyfriend"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "AI Boyfriend Discord Bot for Chinese users",
+  "dependencies": {
+    "@huggingface/inference": "^4.0.0",
+    "@supabase/supabase-js": "^2.45.4",
+    "axios": "^1.7.7",
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "http-proxy-agent": "^7.0.2",
+    "https-proxy-agent": "^7.0.6",
+    "openai": "^4.58.1",
+    "proxy-agent": "^6.5.0",
+    "socks-proxy-agent": "^8.0.5",
+    "undici": "^7.10.0",
+    "ws": "^8.18.2"
+  }
+}
