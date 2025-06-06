@@ -223,12 +223,40 @@ function setupBotEvents(client) {
         const thresholdCheck = EmotionService.checkEmotionThreshold(het, userProfile.ab_group);
         console.log(`🎯 情感阈值检查: ${thresholdCheck.reached ? '达标' : '未达标'} (${(thresholdCheck.progress * 100).toFixed(1)}%)`);
         
-        // 计算亲密度增长
-        let intimacyGain = Math.floor(het / 20);
-        if (thresholdCheck.reached) {
-          intimacyGain += 5; // 阈值奖励
+        // 🆕 修复亲密度计算公式 - 避免数值爆炸
+        console.log('💕 计算亲密度增长:');
+        console.log(`   当前HET值: ${het}`);
+        
+        // 基础亲密度增长：更合理的公式
+        let intimacyGain = 0;
+        
+        if (het > 0) {
+          // 🆕 新的计算公式：根据HET范围给出不同的增长
+          if (het >= 80) {
+            intimacyGain = 5; // 高情感：5点亲密度
+          } else if (het >= 50) {
+            intimacyGain = 3; // 中高情感：3点亲密度
+          } else if (het >= 20) {
+            intimacyGain = 2; // 中等情感：2点亲密度
+          } else if (het >= 5) {
+            intimacyGain = 1; // 低情感：1点亲密度
+          } else {
+            intimacyGain = 0; // 极低或无情感：0点亲密度
+          }
         }
-        console.log(`💕 亲密度增长: +${intimacyGain}`);
+        
+        // 阈值达标奖励
+        if (thresholdCheck.reached) {
+          intimacyGain += 2; // 阈值奖励改为+2（原来是+5）
+          console.log(`   阈值达标奖励: +2`);
+        }
+        
+        // 🆕 限制单次增长上限，避免数值爆炸
+        intimacyGain = Math.min(intimacyGain, 10); // 单次最多增长10点
+        
+        console.log(`   基础增长计算: HET=${het} → 亲密度+${intimacyGain}`);
+        console.log(`   计算依据: ${het >= 80 ? '高情感' : het >= 50 ? '中高情感' : het >= 20 ? '中等情感' : het >= 5 ? '低情感' : '无明显情感'}`);
+        console.log(`💕 最终亲密度增长: +${intimacyGain}`);
         
         console.log('📊 步骤8: 更新用户数据...');
         // 更新用户档案

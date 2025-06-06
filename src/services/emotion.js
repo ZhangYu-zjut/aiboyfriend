@@ -97,8 +97,26 @@ export class EmotionService {
     }
   }
 
-  // 降级情感分析（基于关键词）- 优化中文支持
+  // 降级情感分析（基于关键词）- 优化中文支持和语境识别
   static fallbackEmotionAnalysis(text) {
+    console.log(`🔍 关键词情感分析: "${text}"`);
+    
+    // 🆕 增加语境检测 - 疑问句和否定句
+    const isQuestion = /[？?]/.test(text) || 
+                       text.includes('什么') || text.includes('怎么') || text.includes('为什么') ||
+                       text.includes('哪里') || text.includes('谁') || text.includes('如何') ||
+                       text.includes('吗') || text.includes('呢');
+                       
+    const isNegation = text.includes('不') || text.includes('没') || text.includes('别') || 
+                      text.includes('无') || text.includes('非');
+                      
+    console.log(`语境检测: 疑问句=${isQuestion}, 否定句=${isNegation}`);
+    
+    // 如果是疑问句，降低情感强度权重
+    const questionPenalty = isQuestion ? 0.3 : 1.0;
+    // 如果是否定句，需要特殊处理
+    const negationModifier = isNegation ? -0.5 : 1.0;
+
     const positiveWords = [
       // 高强度正面情感
       '爱死了', '超爱', '最爱', '深爱', '疯狂喜欢', '太棒了', '完美', '无敌', '超级棒',
@@ -140,16 +158,24 @@ export class EmotionService {
       negative: ['emo了', '破防了', '心态崩了', '裂开', '麻了', '无语', '醉了', '服了', '败了']
     };
 
-    // 复合词组检测（优先级更高）
-    const positivePhrases = [
-      '心情很好', '心情好', '心情不错', '心情愉快', '感觉很好', '感觉不错',
-      '今天很好', '今天不错', '今天开心', '今天高兴', '今天愉快',
-      '太好了', '真好', '很好呢', '好开心', '好高兴', '好棒'
-    ];
-    
-    const negativePhrases = [
-      '心情不好', '心情低落', '心情差', '感觉不好', '感觉糟糕',
-      '今天不好', '今天糟糕', '今天难过', '心情有点低落'
+    // 🆕 强情感表达词组（优先级最高，不受疑问句影响）
+    const strongEmotionPhrases = {
+      positive: [
+        '我爱你', '爱死你了', '想死你了', '超级爱你', '最爱你', '心动了',
+        '好开心啊', '开心死了', '太棒了', '完美', '无敌了', '超级棒',
+        '感觉很幸福', '好幸福', '太幸福了', '心情超好', '心情特别好'
+      ],
+      negative: [
+        '我难过', '好难过', '伤心死了', '心碎了', '想哭', '好痛苦',
+        '心情很差', '心情不好', '感觉糟透了', '烦死了', '气死了'
+      ]
+    };
+
+    // 🆕 中性疑问词组（应该被识别为中性）
+    const neutralQuestions = [
+      '你喜欢什么', '喜欢什么', '你爱什么', '爱什么',
+      '什么好', '什么不错', '怎么样', '如何',
+      '你觉得呢', '你认为呢', '你说呢'
     ];
 
     const lowerText = text.toLowerCase();
@@ -157,34 +183,68 @@ export class EmotionService {
     let negativeCount = 0;
     let positiveIntensity = 0;
     let negativeIntensity = 0;
+    let hasStrongEmotion = false;
 
-    // 首先检查复合词组（优先级最高）
-    positivePhrases.forEach(phrase => {
+    // 首先检查是否为中性疑问
+    let isNeutralQuestion = false;
+    neutralQuestions.forEach(phrase => {
+      if (text.includes(phrase)) {
+        isNeutralQuestion = true;
+        console.log(`检测到中性疑问: "${phrase}"`);
+      }
+    });
+
+    // 如果是中性疑问，直接返回中性结果
+    if (isNeutralQuestion) {
+      console.log('✅ 识别为中性疑问，返回中性结果');
+      return {
+        emotions: [{ label: 'neutral', score: 0.8 }],
+        score: 0,
+        isPositive: false,
+        source: 'keyword-fallback-neutral',
+        details: {
+          positiveCount: 0,
+          negativeCount: 0,
+          positiveIntensity: 0,
+          negativeIntensity: 0,
+          neutralQuestion: true
+        }
+      };
+    }
+
+    // 检查强情感表达（不受疑问句影响）
+    strongEmotionPhrases.positive.forEach(phrase => {
       if (text.includes(phrase)) {
         positiveCount++;
-        positiveIntensity += 3; // 复合词组给更高分数
-        console.log(`发现正面词组: "${phrase}"`);
+        positiveIntensity += 4; // 强情感给最高分数
+        hasStrongEmotion = true;
+        console.log(`发现强正面情感: "${phrase}"`);
       }
     });
     
-    negativePhrases.forEach(phrase => {
+    strongEmotionPhrases.negative.forEach(phrase => {
       if (text.includes(phrase)) {
         negativeCount++;
-        negativeIntensity += 3;
-        console.log(`发现负面词组: "${phrase}"`);
+        negativeIntensity += 4;
+        hasStrongEmotion = true;
+        console.log(`发现强负面情感: "${phrase}"`);
       }
     });
 
-    // 检查正面词汇
+    // 只有在没有强情感表达时，才应用疑问句和否定句的权重调整
+    const emotionModifier = hasStrongEmotion ? 1.0 : (questionPenalty * negationModifier);
+
+    // 检查普通正面词汇
     positiveWords.forEach(word => {
       if (lowerText.includes(word)) {
         positiveCount++;
         // 根据词汇强度给不同分数
+        let intensity = 1;
         if (word.includes('超') || word.includes('最') || word.includes('死')) {
-          positiveIntensity += 2;
-        } else {
-          positiveIntensity += 1;
+          intensity = 2;
         }
+        positiveIntensity += intensity * emotionModifier;
+        console.log(`发现正面词汇: "${word}", 强度: ${intensity * emotionModifier}`);
       }
     });
 
@@ -192,11 +252,12 @@ export class EmotionService {
     negativeWords.forEach(word => {
       if (lowerText.includes(word)) {
         negativeCount++;
+        let intensity = 1;
         if (word.includes('死') || word.includes('崩') || word.includes('绝望')) {
-          negativeIntensity += 2;
-        } else {
-          negativeIntensity += 1;
+          intensity = 2;
         }
+        negativeIntensity += intensity * Math.abs(emotionModifier);
+        console.log(`发现负面词汇: "${word}", 强度: ${intensity * Math.abs(emotionModifier)}`);
       }
     });
 
@@ -204,54 +265,97 @@ export class EmotionService {
     internetSlang.positive.forEach(word => {
       if (lowerText.includes(word)) {
         positiveCount++;
-        positiveIntensity += 1.5;
+        positiveIntensity += 1.5 * emotionModifier;
       }
     });
 
     internetSlang.negative.forEach(word => {
       if (lowerText.includes(word)) {
         negativeCount++;
-        negativeIntensity += 1.5;
+        negativeIntensity += 1.5 * Math.abs(emotionModifier);
       }
     });
 
-    console.log(`关键词检测结果: 正面词${positiveCount}个(强度${positiveIntensity}), 负面词${negativeCount}个(强度${negativeIntensity})`);
+    console.log(`关键词检测结果: 正面词${positiveCount}个(强度${positiveIntensity.toFixed(2)}), 负面词${negativeCount}个(强度${negativeIntensity.toFixed(2)})`);
+    console.log(`语境修正: 疑问句权重=${questionPenalty}, 否定修正=${negationModifier}, 强情感=${hasStrongEmotion}`);
 
-    // 计算最终得分，考虑强度
+    // 🆕 改进的得分计算 - 限制数值范围
     const totalIntensity = positiveIntensity + negativeIntensity;
-    const score = totalIntensity > 0 ? 
-      (positiveIntensity - negativeIntensity) / totalIntensity : 0;
+    let score = 0;
+    
+    if (totalIntensity > 0) {
+      // 计算相对得分，范围在-1到1之间
+      score = (positiveIntensity - negativeIntensity) / totalIntensity;
+      
+      // 🆕 限制得分范围，避免极端值
+      score = Math.max(-0.8, Math.min(0.8, score));
+      
+      // 🆕 如果总强度很低（说明情感不明显），进一步降低得分
+      if (totalIntensity < 2) {
+        score = score * 0.5;
+      }
+    }
+
+    console.log(`最终情感得分: ${score.toFixed(3)} (总强度: ${totalIntensity.toFixed(2)})`);
 
     return {
       emotions: [
         { 
-          label: positiveCount > negativeCount ? 'joy' : (negativeCount > positiveCount ? 'sadness' : 'neutral'), 
+          label: positiveIntensity > negativeIntensity ? 'joy' : (negativeIntensity > positiveIntensity ? 'sadness' : 'neutral'), 
           score: Math.abs(score) 
         }
       ],
       score,
-      isPositive: score > 0,
+      isPositive: score > 0.1, // 提高正面情感判定阈值
       source: 'keyword-fallback',
       details: {
         positiveCount,
         negativeCount,
-        positiveIntensity,
-        negativeIntensity
+        positiveIntensity: Number(positiveIntensity.toFixed(2)),
+        negativeIntensity: Number(negativeIntensity.toFixed(2)),
+        isQuestion,
+        isNegation,
+        hasStrongEmotion,
+        questionPenalty,
+        emotionModifier: Number(emotionModifier.toFixed(2))
       }
     };
   }
 
-  // 计算HET（High-Emotional Tokens）
+  // 🆕 修复HET计算，确保数值合理
   static calculateHET(text, emotionResult, tokenCount) {
-    const baseScore = emotionResult.score;
+    console.log('🧮 HET计算开始:');
+    console.log(`   输入Token数: ${tokenCount}`);
+    console.log(`   情感得分: ${emotionResult.score}`);
+    console.log(`   是否正面: ${emotionResult.isPositive}`);
     
-    // 情感强度乘数
-    const intensityMultiplier = emotionResult.isPositive ? 1.5 : 0.5;
+    const baseScore = Math.abs(emotionResult.score);
     
-    // 计算HET
-    const het = Math.floor(tokenCount * baseScore * intensityMultiplier);
+    // 🆕 更合理的HET计算公式
+    // 基础HET = Token数 × 情感强度 × 方向乘数
+    const directionMultiplier = emotionResult.isPositive ? 1.2 : 0.8;
     
-    return Math.max(0, het);
+    // 🆕 限制基础HET的最大值，避免数值爆炸
+    const maxBaseHET = 50; // 单条消息最大基础HET
+    let baseHET = tokenCount * baseScore * directionMultiplier;
+    baseHET = Math.min(baseHET, maxBaseHET);
+    
+    // 🆕 根据情感来源调整（API结果 vs 关键词检测）
+    const sourceMultiplier = emotionResult.source === 'huggingface-english' ? 1.0 : 0.7;
+    
+    // 🆕 最终HET计算
+    let finalHET = Math.floor(baseHET * sourceMultiplier);
+    
+    // 🆕 强制限制HET范围
+    finalHET = Math.max(0, Math.min(finalHET, 100)); // HET范围：0-100
+    
+    console.log(`   计算过程:`);
+    console.log(`     基础HET = ${tokenCount} × ${baseScore.toFixed(3)} × ${directionMultiplier} = ${(tokenCount * baseScore * directionMultiplier).toFixed(2)}`);
+    console.log(`     限制后基础HET = ${baseHET.toFixed(2)}`);
+    console.log(`     来源乘数 = ${sourceMultiplier}`);
+    console.log(`     最终HET = ${finalHET}`);
+    
+    return finalHET;
   }
 
   // 检查是否达到情感阈值
