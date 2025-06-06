@@ -58,7 +58,7 @@ function testConfigValidation() {
   const requiredEnvs = [
     'BOT_TOKEN',
     'CLIENT_ID', 
-    'OPENAI_API_KEY',
+    'OPENROUTER_API_KEY',
     'SUPABASE_URL',
     'SUPABASE_ANON_KEY'
   ];
@@ -108,11 +108,11 @@ async function runAllTests() {
   // 系统Prompt测试
   testSystemPrompt();
   
-  if (configValid && process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.startsWith('your_')) {
-    // AI服务测试（需要OpenAI API密钥）
+  if (configValid && process.env.OPENROUTER_API_KEY && !process.env.OPENROUTER_API_KEY.startsWith('your_')) {
+    // AI服务测试（需要OpenRouter API密钥）
     await testAIService();
   } else {
-    console.log('\n⚠️  跳过AI服务测试（需要有效的OpenAI API密钥）');
+    console.log('\n⚠️  跳过AI服务测试（需要有效的OpenRouter API密钥）');
   }
   
   // 情感分析测试

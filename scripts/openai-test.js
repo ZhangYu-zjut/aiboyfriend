@@ -2,8 +2,6 @@
 
 // 服务调试和健康检查脚本
 import 'dotenv/config';
-import { createClient } from '@supabase/supabase-js';
-import { HfInference } from '@huggingface/inference';
 
 console.log('🔍 开始服务健康检查...\n');
 
@@ -77,56 +75,6 @@ function checkEnvironmentVariables() {
   return allRequired;
 }
 
-// 2. 检查Supabase连接
-async function checkSupabaseConnection() {
-  console.log('\n2. 🗄️  检查Supabase数据库连接');
-  
-  try {
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-    
-    if (!supabaseUrl || !supabaseKey) {
-      logError('Supabase配置缺失');
-      return false;
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    
-    // 测试连接
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('count')
-      .limit(1);
-
-    if (error) {
-      logError(`Supabase连接失败: ${error.message}`);
-      return false;
-    }
-
-    logSuccess('Supabase连接正常');
-    
-    // 检查表结构
-    const tables = ['profiles', 'sessions', 'ab_events'];
-    for (const table of tables) {
-      const { error: tableError } = await supabase
-        .from(table)
-        .select('*')
-        .limit(1);
-      
-      if (tableError) {
-        logError(`表 ${table} 不存在或无法访问: ${tableError.message}`);
-      } else {
-        logSuccess(`表 ${table} 存在且可访问`);
-      }
-    }
-
-    return true;
-  } catch (error) {
-    logError(`Supabase检查异常: ${error.message}`);
-    return false;
-  }
-}
-
 // 3. 检查OpenRouter API
 async function checkOpenAIConnection() {
   console.log('\n3. 🤖 检查OpenRouter API连接');
@@ -151,9 +99,9 @@ async function checkOpenAIConnection() {
         model: 'openai/gpt-4o-mini',
         messages: [{ 
           role: 'user', 
-          content: "Hello, this is a test message."
+          content: "Hello, this is a test message. Please respond briefly."
         }],
-        max_tokens: 20
+        max_tokens: 50
       })
     });
 
@@ -172,6 +120,7 @@ async function checkOpenAIConnection() {
       if (data.usage) {
         logInfo(`用量: ${data.usage.total_tokens} tokens`);
       }
+      logInfo(`响应内容: ${data.choices[0].message.content.substring(0, 50)}...`);
       return true;
     } else {
       logError('OpenRouter API响应异常');
@@ -190,63 +139,6 @@ async function checkOpenAIConnection() {
   }
 }
 
-// 4. 检查HuggingFace API
-async function checkHuggingFaceConnection() {
-  console.log('\n4. 🤗 检查HuggingFace API连接');
-  
-  try {
-    const apiKey = process.env.HUGGINGFACE_API_KEY;
-    if (!apiKey) {
-      logError('HuggingFace API Key未配置');
-      return false;
-    }
-
-    const hf = new HfInference(apiKey);
-    
-    // 测试情感分析
-    const result = await hf.textClassification({
-      model: 'j-hartmann/emotion-english-distilroberta-base',
-      inputs: 'I love you'
-    });
-
-    if (result && result.length > 0) {
-      logSuccess('HuggingFace API连接正常');
-      logInfo(`检测到情感: ${result[0].label} (${(result[0].score * 100).toFixed(1)}%)`);
-      return true;
-    } else {
-      logError('HuggingFace API响应异常');
-      return false;
-    }
-  } catch (error) {
-    logError(`HuggingFace API连接失败: ${error.message}`);
-    return false;
-  }
-}
-
-// 5. 检查Discord API
-async function checkDiscordConnection() {
-  console.log('\n5. 🎮 检查Discord API连接');
-  
-  try {
-    const response = await fetch('https://discord.com/api/v10/gateway', {
-      signal: AbortSignal.timeout(10000)
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      logSuccess('Discord Gateway可访问');
-      logInfo(`Gateway URL: ${data.url}`);
-      return true;
-    } else {
-      logError(`Discord API响应错误: ${response.status}`);
-      return false;
-    }
-  } catch (error) {
-    logError(`Discord API连接失败: ${error.message}`);
-    return false;
-  }
-}
-
 // 主函数
 async function main() {
   console.log('🚀 AI男友Discord机器人 - 服务健康检查\n');
@@ -261,10 +153,7 @@ async function main() {
 
   // 执行所有检查
   results.env = checkEnvironmentVariables();
-  results.supabase = await checkSupabaseConnection();
   results.openai = await checkOpenAIConnection();
-  results.huggingface = await checkHuggingFaceConnection();
-  results.discord = await checkDiscordConnection();
 
   // 生成报告
   console.log('\n📊 健康检查报告');
@@ -272,10 +161,8 @@ async function main() {
   
   const services = [
     { name: '环境变量', key: 'env', critical: true },
-    { name: 'Supabase数据库', key: 'supabase', critical: true },
     { name: 'OpenRouter API', key: 'openai', critical: true },
-    { name: 'HuggingFace API', key: 'huggingface', critical: false },
-    { name: 'Discord API', key: 'discord', critical: true }
+
   ];
 
   let criticalIssues = 0;
@@ -308,15 +195,11 @@ async function main() {
     if (!results.env) {
       console.log('- 检查Railway环境变量配置');
     }
-    if (!results.supabase) {
-      console.log('- 检查Supabase项目配置和数据库表结构');
-    }
+
     if (!results.openai) {
       console.log('- 检查OpenRouter API Key和配额');
     }
-    if (!results.discord) {
-      console.log('- 检查网络连接和防火墙设置');
-    }
+
   }
 
   if (warnings > 0) {

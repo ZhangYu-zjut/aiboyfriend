@@ -24,7 +24,7 @@ async function step1_CheckEnvironment() {
   const requiredVars = {
     'BOT_TOKEN': '机器人Token',
     'CLIENT_ID': '应用程序ID', 
-    'OPENAI_API_KEY': 'OpenAI API密钥',
+    'OPENROUTER_API_KEY': 'OpenRouter API密钥',
     'SUPABASE_URL': 'Supabase数据库URL',
     'SUPABASE_ANON_KEY': 'Supabase匿名密钥'
   };
@@ -68,7 +68,7 @@ async function step2_TestNetwork() {
   
   const testUrls = [
     { name: 'Discord API', url: 'https://discord.com/api/v10/gateway' },
-    { name: 'OpenAI API', url: 'https://api.openai.com/v1/models' },
+    { name: 'OpenRouter API', url: 'https://openrouter.ai/api/v1/models' },
     { name: 'Google DNS', url: 'https://8.8.8.8' }
   ];
   

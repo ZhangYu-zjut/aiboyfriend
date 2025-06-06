@@ -1,8 +1,6 @@
-import OpenAI from 'openai';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// OpenRouter API 配置
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 export class AIService {
   // 基础人设prompt
@@ -57,6 +55,10 @@ export class AIService {
       console.log(`📝 用户消息: ${userMessage.substring(0, 50)}...`);
       console.log(`👤 用户亲密度: ${userProfile.intimacy}`);
       
+      if (!OPENROUTER_API_KEY) {
+        throw new Error('OPENROUTER_API_KEY 未配置');
+      }
+      
       const systemPrompt = this.getSystemPrompt(userProfile, userProfile.intimacy);
       
       // 构建对话历史
@@ -75,44 +77,66 @@ export class AIService {
       // 添加当前用户消息
       messages.push({ role: 'user', content: userMessage });
 
-      console.log('📡 调用OpenAI API...');
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages,
-        max_tokens: 500,
-        temperature: 0.8,
-        presence_penalty: 0.1,
-        frequency_penalty: 0.1
+      console.log('📡 调用OpenRouter API...');
+      
+      // 使用 fetch 进行 HTTP 请求
+      const response = await fetch(OPENROUTER_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'HTTP-Referer': 'discord.com',
+          'X-Title': 'AI-Boyfriend-Bot'
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-4o-mini',
+          messages,
+          max_tokens: 500,
+          temperature: 0.8,
+          presence_penalty: 0.1,
+          frequency_penalty: 0.1
+        })
       });
 
-      const reply = response.choices[0].message.content;
-      const tokens = response.usage.total_tokens;
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenRouter API 请求失败: ${response.status} ${response.statusText} - ${errorText}`);
+      }
 
-      console.log('✅ OpenAI API调用成功');
-      console.log(`📊 Token使用: ${tokens} (提示: ${response.usage.prompt_tokens}, 完成: ${response.usage.completion_tokens})`);
+      const data = await response.json();
+      
+      if (!data.choices || data.choices.length === 0) {
+        throw new Error('OpenRouter API 返回数据格式异常');
+      }
+
+      const reply = data.choices[0].message.content;
+      const tokens = data.usage?.total_tokens || 0;
+
+      console.log('✅ OpenRouter API调用成功');
+      console.log(`📊 Token使用: ${tokens} (提示: ${data.usage?.prompt_tokens || 0}, 完成: ${data.usage?.completion_tokens || 0})`);
       console.log(`💬 AI回复: ${reply.substring(0, 50)}...`);
 
       return {
         reply,
         tokens,
-        usage: response.usage
+        usage: data.usage || { total_tokens: tokens, prompt_tokens: 0, completion_tokens: 0 }
       };
     } catch (error) {
-      console.error('❌ OpenAI API调用失败:');
+      console.error('❌ OpenRouter API调用失败:');
       console.error('错误类型:', error.constructor.name);
       console.error('错误消息:', error.message);
-      console.error('错误码:', error.code || 'N/A');
-      console.error('错误状态:', error.status || 'N/A');
       
       // 根据错误类型提供更详细的信息
-      if (error.message.includes('quota')) {
+      if (error.message.includes('quota') || error.message.includes('insufficient')) {
         console.error('💳 可能原因: API配额用尽');
-      } else if (error.message.includes('invalid')) {
+      } else if (error.message.includes('invalid') || error.message.includes('unauthorized')) {
         console.error('🔑 可能原因: API Key无效');
-      } else if (error.message.includes('network') || error.message.includes('timeout')) {
+      } else if (error.message.includes('network') || error.message.includes('timeout') || error.message.includes('fetch')) {
         console.error('🌐 可能原因: 网络连接问题');
-      } else if (error.message.includes('rate')) {
+      } else if (error.message.includes('rate') || error.message.includes('429')) {
         console.error('⏱️  可能原因: 请求频率过高');
+      } else if (error.message.includes('500') || error.message.includes('502') || error.message.includes('503')) {
+        console.error('🔧 可能原因: 服务器内部错误');
       }
       
       console.log('🔄 使用降级回复机制...');

@@ -346,7 +346,7 @@ BOT_TOKEN=                # Discord机器人Token
 CLIENT_ID=                # Discord应用ID
 
 # OpenAI配置  
-OPENAI_API_KEY=          # OpenAI API密钥
+OPENROUTER_API_KEY=          # OpenRouter API密钥
 
 # Supabase配置
 SUPABASE_URL=            # Supabase项目URL

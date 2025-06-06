@@ -43,7 +43,7 @@ nano .env
 ```env
 BOT_TOKEN=你的Discord机器人令牌
 CLIENT_ID=你的Discord应用程序ID
-OPENAI_API_KEY=sk-开头的OpenAI密钥
+OPENROUTER_API_KEY=sk-开头的OpenRouter密钥
 SUPABASE_URL=https://你的项目.supabase.co
 SUPABASE_ANON_KEY=eyJ开头的匿名密钥
 SUPABASE_SERVICE_ROLE_KEY=eyJ开头的服务角色密钥

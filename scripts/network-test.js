@@ -13,7 +13,7 @@ async function testBasicConnection() {
   const testUrls = [
     'https://www.google.com',
     'https://www.baidu.com',
-    'https://api.openai.com',
+    'https://openrouter.ai',
     'https://discord.com'
   ];
   

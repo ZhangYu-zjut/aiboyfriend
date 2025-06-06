@@ -19,6 +19,6 @@
 复制并编辑 .env 文件:
 - BOT_TOKEN=你的Discord机器人Token
 - CLIENT_ID=你的Discord应用ID
-- OPENAI_API_KEY=你的OpenAI API密钥
+- OPENROUTER_API_KEY=你的OpenRouter API密钥
 - SUPABASE_URL=你的Supabase项目URL
 - SUPABASE_ANON_KEY=你的Supabase匿名密钥

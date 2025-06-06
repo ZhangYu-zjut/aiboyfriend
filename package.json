@@ -9,6 +9,8 @@
     "debug": "node scripts/debug-services.js",
     "test:emotion": "node scripts/test-emotion-analysis.js",
     "test:all": "npm run debug && npm run test:emotion",
+    "fix:database": "node scripts/fix-database.js",
+    "setup": "npm run fix:database && npm run debug",
     "generate-invite": "node scripts/generate-invite-link.js"
   },
   "keywords": [
@@ -29,7 +31,6 @@
     "express": "^4.19.2",
     "http-proxy-agent": "^7.0.2",
     "https-proxy-agent": "^7.0.6",
-    "openai": "^4.58.1",
     "proxy-agent": "^6.5.0",
     "socks-proxy-agent": "^8.0.5",
     "undici": "^7.10.0",

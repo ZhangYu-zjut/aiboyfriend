@@ -54,7 +54,7 @@
   4. **请求格式错误**
 
 **解决方案**：
-1. 验证 `OPENAI_API_KEY` 环境变量
+1. 验证 `OPENROUTER_API_KEY` 环境变量
 2. 添加详细的OpenAI API错误日志
 3. 实现API健康检查
 4. 优化降级回复逻辑

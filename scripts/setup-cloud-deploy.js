@@ -86,7 +86,7 @@ function generateRailwayGuide() {
   const envVars = [
     'BOT_TOKEN',
     'CLIENT_ID', 
-    'OPENAI_API_KEY',
+    'OPENROUTER_API_KEY',
     'SUPABASE_URL',
     'SUPABASE_ANON_KEY',
     'SUPABASE_SERVICE_ROLE_KEY',
@@ -187,7 +187,7 @@ function generateEnvFile() {
   const requiredVars = [
     'BOT_TOKEN',
     'CLIENT_ID',
-    'OPENAI_API_KEY', 
+    'OPENROUTER_API_KEY', 
     'SUPABASE_URL',
     'SUPABASE_ANON_KEY',
     'SUPABASE_SERVICE_ROLE_KEY',

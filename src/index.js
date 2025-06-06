@@ -46,10 +46,10 @@ async function createDiscordClient() {
   delete process.env.http_proxy;
   
   // 最基本的客户端配置
-  const client = new Client({
+const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMessages,
+            GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
       GatewayIntentBits.DirectMessages
     ],
