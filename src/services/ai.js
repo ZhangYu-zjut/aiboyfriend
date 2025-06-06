@@ -1,6 +1,11 @@
 // OpenRouter API 配置
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+
+// 支持多种环境变量名称，按优先级尝试读取
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || 
+                           process.env.OPENAI_API_KEY || 
+                           process.env.AI_API_KEY ||
+                           process.env.OPENROUTER_KEY;
 
 export class AIService {
   // 基础人设prompt
@@ -57,8 +62,24 @@ export class AIService {
       console.log(`🧪 用户分组: ${userProfile.ab_group}`);
       
       console.log('🔧 检查API配置...');
+      console.log('🔍 环境变量检查:');
+      console.log(`   OPENROUTER_API_KEY: ${process.env.OPENROUTER_API_KEY ? '✅ 存在' : '❌ 不存在'}`);
+      console.log(`   OPENAI_API_KEY: ${process.env.OPENAI_API_KEY ? '✅ 存在' : '❌ 不存在'}`);
+      console.log(`   AI_API_KEY: ${process.env.AI_API_KEY ? '✅ 存在' : '❌ 不存在'}`);
+      console.log(`   OPENROUTER_KEY: ${process.env.OPENROUTER_KEY ? '✅ 存在' : '❌ 不存在'}`);
+      console.log(`   最终使用的密钥: ${OPENROUTER_API_KEY ? '✅ 已获取' : '❌ 未获取'}`);
+      
       if (!OPENROUTER_API_KEY) {
-        console.error('❌ OPENROUTER_API_KEY 未配置');
+        console.error('❌ 无法获取OpenRouter API密钥');
+        console.error('🔍 调试信息:');
+        console.error(`   当前环境: ${process.env.NODE_ENV || '未知'}`);
+        console.error(`   Railway环境: ${process.env.RAILWAY_ENVIRONMENT || '否'}`);
+        console.error(`   可用环境变量数: ${Object.keys(process.env).length}`);
+        console.error('💡 建议解决方案:');
+        console.error('   1. 检查Railway Variables页面的配置');
+        console.error('   2. 重新创建OPENROUTER_API_KEY变量');
+        console.error('   3. 确保变量不是Shared Variable');
+        console.error('   4. 重启Railway服务');
         throw new Error('OPENROUTER_API_KEY 未配置');
       }
       console.log('✅ OpenRouter API密钥已配置');
