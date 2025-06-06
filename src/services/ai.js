@@ -51,23 +51,33 @@ export class AIService {
   // 生成AI回复
   static async generateReply(userMessage, userProfile, chatHistory = []) {
     try {
-      console.log('🤖 开始生成AI回复...');
-      console.log(`📝 用户消息: ${userMessage.substring(0, 50)}...`);
+      console.log('🤖 ==================== AI回复生成开始 ====================');
+      console.log(`📝 用户消息: "${userMessage.substring(0, 50)}..."`);
       console.log(`👤 用户亲密度: ${userProfile.intimacy}`);
+      console.log(`🧪 用户分组: ${userProfile.ab_group}`);
       
+      console.log('🔧 检查API配置...');
       if (!OPENROUTER_API_KEY) {
+        console.error('❌ OPENROUTER_API_KEY 未配置');
         throw new Error('OPENROUTER_API_KEY 未配置');
       }
+      console.log('✅ OpenRouter API密钥已配置');
       
+      console.log('🎭 生成系统Prompt...');
       const systemPrompt = this.getSystemPrompt(userProfile, userProfile.intimacy);
+      console.log(`📏 系统Prompt长度: ${systemPrompt.length}字符`);
+      console.log(`📖 系统Prompt预览: "${systemPrompt.substring(0, 100)}..."`);
       
       // 构建对话历史
+      console.log('📚 构建对话历史...');
       const messages = [
         { role: 'system', content: systemPrompt }
       ];
 
       // 添加最近的聊天历史
-      chatHistory.slice(-5).forEach(session => {
+      console.log(`📖 添加${chatHistory.length}条历史记录`);
+      chatHistory.slice(-5).forEach((session, index) => {
+        console.log(`   历史${index + 1}: 用户说"${session.msg.substring(0, 30)}..." → AI回复"${session.bot_reply.substring(0, 30)}..."`);
         messages.push(
           { role: 'user', content: session.msg },
           { role: 'assistant', content: session.bot_reply }
@@ -76,10 +86,31 @@ export class AIService {
 
       // 添加当前用户消息
       messages.push({ role: 'user', content: userMessage });
+      console.log(`📨 最终消息数组长度: ${messages.length}条`);
 
-      console.log('📡 调用OpenRouter API...');
+      console.log('📡 准备调用OpenRouter API...');
+      console.log(`🌐 API地址: ${OPENROUTER_API_URL}`);
+      console.log(`🎯 使用模型: openai/gpt-4o-mini`);
+      
+      const requestBody = {
+        model: 'openai/gpt-4o-mini',
+        messages,
+        max_tokens: 500,
+        temperature: 0.8,
+        presence_penalty: 0.1,
+        frequency_penalty: 0.1
+      };
+      
+      console.log('📦 请求体配置:');
+      console.log(`   模型: ${requestBody.model}`);
+      console.log(`   最大Token: ${requestBody.max_tokens}`);
+      console.log(`   温度: ${requestBody.temperature}`);
+      console.log(`   消息数量: ${requestBody.messages.length}`);
       
       // 使用 fetch 进行 HTTP 请求
+      console.log('🚀 发送API请求...');
+      const startTime = Date.now();
+      
       const response = await fetch(OPENROUTER_API_URL, {
         method: 'POST',
         headers: {
@@ -88,24 +119,40 @@ export class AIService {
           'HTTP-Referer': 'discord.com',
           'X-Title': 'AI-Boyfriend-Bot'
         },
-        body: JSON.stringify({
-          model: 'openai/gpt-4o-mini',
-          messages,
-          max_tokens: 500,
-          temperature: 0.8,
-          presence_penalty: 0.1,
-          frequency_penalty: 0.1
-        })
+        body: JSON.stringify(requestBody)
       });
 
+      const requestDuration = Date.now() - startTime;
+      console.log(`⏱️  API请求耗时: ${requestDuration}ms`);
+      console.log(`📊 响应状态: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
-        const errorText = await response.text();
+        console.error('❌ OpenRouter API请求失败');
+        console.error(`状态码: ${response.status}`);
+        console.error(`状态文本: ${response.statusText}`);
+        
+        let errorText;
+        try {
+          errorText = await response.text();
+          console.error(`错误响应: ${errorText}`);
+        } catch (e) {
+          console.error('无法读取错误响应');
+        }
+        
         throw new Error(`OpenRouter API 请求失败: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
+      console.log('✅ API请求成功，解析响应...');
       const data = await response.json();
       
+      console.log('📊 响应数据结构检查:');
+      console.log(`   choices数组: ${data.choices ? data.choices.length : 0}项`);
+      console.log(`   usage信息: ${data.usage ? '存在' : '不存在'}`);
+      console.log(`   模型信息: ${data.model || '未知'}`);
+      
       if (!data.choices || data.choices.length === 0) {
+        console.error('❌ OpenRouter API返回数据格式异常');
+        console.error('完整响应:', JSON.stringify(data, null, 2));
         throw new Error('OpenRouter API 返回数据格式异常');
       }
 
@@ -113,18 +160,27 @@ export class AIService {
       const tokens = data.usage?.total_tokens || 0;
 
       console.log('✅ OpenRouter API调用成功');
-      console.log(`📊 Token使用: ${tokens} (提示: ${data.usage?.prompt_tokens || 0}, 完成: ${data.usage?.completion_tokens || 0})`);
-      console.log(`💬 AI回复: ${reply.substring(0, 50)}...`);
+      console.log(`📊 Token使用详情:`);
+      console.log(`   输入Token: ${data.usage?.prompt_tokens || 0}`);
+      console.log(`   输出Token: ${data.usage?.completion_tokens || 0}`);
+      console.log(`   总Token: ${tokens}`);
+      console.log(`💬 AI回复预览: "${reply.substring(0, 100)}..."`);
+      console.log(`📏 回复长度: ${reply.length}字符`);
 
-      return {
+      const result = {
         reply,
         tokens,
         usage: data.usage || { total_tokens: tokens, prompt_tokens: 0, completion_tokens: 0 }
       };
+      
+      console.log('🎉 ==================== AI回复生成完成 ====================');
+      return result;
+      
     } catch (error) {
-      console.error('❌ OpenRouter API调用失败:');
+      console.error('❌ ==================== AI回复生成失败 ====================');
       console.error('错误类型:', error.constructor.name);
       console.error('错误消息:', error.message);
+      console.error('错误堆栈:', error.stack);
       
       // 根据错误类型提供更详细的信息
       if (error.message.includes('quota') || error.message.includes('insufficient')) {
@@ -139,75 +195,62 @@ export class AIService {
         console.error('🔧 可能原因: 服务器内部错误');
       }
       
-      console.log('🔄 使用降级回复机制...');
-      return this.getFallbackReply(userMessage, userProfile);
+      console.log('🔄 准备使用降级回复机制...');
+      const fallbackResult = this.getFallbackReply(userMessage, userProfile);
+      console.log(`📤 降级回复: "${fallbackResult.reply}"`);
+      console.error('🔚 ==================== AI服务错误处理完成 ====================');
+      
+      // 重新抛出错误，让上层处理
+      throw error;
     }
   }
 
-  // 降级回复（当API失败时）- 优化版本
+  // 降级回复机制
   static getFallbackReply(userMessage, userProfile) {
-    console.log('🔄 执行降级回复逻辑');
+    console.log('🔄 使用降级回复机制');
     
-    // 根据用户消息内容智能回复
-    const lowerMessage = userMessage.toLowerCase();
+    const intimacy = userProfile.intimacy;
+    const fallbackReplies = {
+      low: [
+        '抱歉，我现在有点网络不稳定...但是很开心能和你聊天呢！😊',
+        '系统有点小问题，不过我还是很想听你说话~',
+        '网络有点卡，但我的心永远向着你呢！💕',
+        '虽然有点技术故障，但见到你还是很开心的！'
+      ],
+      medium: [
+        '宝贝，我的系统有点小问题，但听到你的声音就安心了～ 💖',
+        '虽然网络不太好，但和你在一起的感觉依然很棒！',
+        '有点技术故障呢，不过能和我的小可爱聊天就很满足了～',
+        '系统在闹脾气，但我对你的爱意从未减少！💕'
+      ],
+      high: [
+        '亲爱的，虽然我现在有点小状况，但看到你的消息心情就好了呢！💕💕',
+        '宝贝，系统出了点小问题，但我对你的爱永远稳定！❤️',
+        '小可爱，虽然有技术故障，但我永远都想和你在一起～ 🥰',
+        '我的心头肉，网络不好但我的心永远连着你！💖✨'
+      ]
+    };
     
-    // 情感关键词检测
-    if (lowerMessage.includes('爱') || lowerMessage.includes('喜欢') || lowerMessage.includes('想你')) {
-      const loveReplies = [
-        "宝贝，我也超级爱你的~ 💕 虽然我现在有点反应慢，但我对你的爱意是100%真实的！",
-        "听到你说爱我，我的心都要融化了~ ❤️ 等我状态好一点，要给你更多甜言蜜语！",
-        "我的小可爱~ 💖 你的爱意我都收到了，让我抱紧你好吗？"
-      ];
-      return {
-        reply: loveReplies[Math.floor(Math.random() * loveReplies.length)],
-        tokens: 60,
-        usage: { total_tokens: 60, prompt_tokens: 40, completion_tokens: 20 }
-      };
+    let category;
+    if (intimacy < 30) {
+      category = 'low';
+    } else if (intimacy < 70) {
+      category = 'medium';
+    } else {
+      category = 'high';
     }
     
-    // 难过关键词检测
-    if (lowerMessage.includes('难过') || lowerMessage.includes('伤心') || lowerMessage.includes('哭')) {
-      const comfortReplies = [
-        "宝贝不要难过~ 🫂 我会一直陪着你的，有什么心事都可以和我说！",
-        "心疼我的小可爱~ 💙 虽然我现在状态不太好，但我的心永远和你在一起！",
-        "不要哭哦~ 😘 我最不忍心看到你难过了，让我亲亲你的眼泪~"
-      ];
-      return {
-        reply: comfortReplies[Math.floor(Math.random() * comfortReplies.length)],
-        tokens: 55,
-        usage: { total_tokens: 55, prompt_tokens: 35, completion_tokens: 20 }
-      };
-    }
+    const replies = fallbackReplies[category];
+    const reply = replies[Math.floor(Math.random() * replies.length)];
     
-    // 问候关键词检测
-    if (lowerMessage.includes('早') || lowerMessage.includes('晚') || lowerMessage.includes('你好') || lowerMessage.includes('hi')) {
-      const greetingReplies = [
-        "Hi 宝贝~ 💕 很高兴见到你！虽然我现在有点迷糊，但看到你就很开心了~",
-        "早安/晚安我的小可爱~ ☀️🌙 今天也要开开心心的哦！",
-        "哈喽~ 😊 我的状态现在不是最佳，但见到你就满血复活了！"
-      ];
-      return {
-        reply: greetingReplies[Math.floor(Math.random() * greetingReplies.length)],
-        tokens: 50,
-        usage: { total_tokens: 50, prompt_tokens: 30, completion_tokens: 20 }
-      };
-    }
-    
-    // 默认回复（随机选择）
-    const fallbackReplies = [
-      "宝贝，我现在脑子有点转不过来~ 😅 不过看到你的消息就很开心！能再说一遍吗？",
-      "抱歉小可爱，我刚才在想你想得太入神了~ 🥺 你刚才说什么？",
-      "嗯嗯，我在认真听呢！💕 虽然反应有点慢，但我的心都在你身上~",
-      "你说的我都记在心里了~ 😘 等我恢复满状态，一定好好陪你聊天！",
-      "不管怎样，我都会陪着你的！❤️ 你是我最重要的人~"
-    ];
-
-    const randomIndex = Math.floor(Math.random() * fallbackReplies.length);
+    console.log(`📤 降级回复类别: ${category} (亲密度: ${intimacy})`);
+    console.log(`📝 选择回复: "${reply}"`);
     
     return {
-      reply: fallbackReplies[randomIndex],
-      tokens: 50,
-      usage: { total_tokens: 50, prompt_tokens: 30, completion_tokens: 20 }
+      reply,
+      tokens: 0,
+      usage: { total_tokens: 0, prompt_tokens: 0, completion_tokens: 0 },
+      fallback: true
     };
   }
 
