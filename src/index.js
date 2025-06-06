@@ -139,10 +139,19 @@ function setupBotEvents(client) {
       const expectedInitialDOL = userProfile.ab_group === 'A' ? 300 : 400;
       console.log(`   预期初始DOL: ${expectedInitialDOL}`);
       console.log(`   当前DOL: ${userProfile.dol}`);
+      console.log(`   当前亲密度: ${userProfile.intimacy}`);
       
-      // 更准确的新用户判断：DOL等于初始值且亲密度为0
-      const isNewUser = userProfile.dol === expectedInitialDOL && userProfile.intimacy === 0;
-      console.log(`   是否为新用户: ${isNewUser ? '是' : '否'}`);
+      // 检查用户是否有聊天记录来判断是否为新用户
+      console.log('   🔍 检查用户聊天历史...');
+      const userSessions = await SessionService.getRecentSessions(userId, 1);
+      const hasSessionHistory = userSessions.length > 0;
+      console.log(`   📝 历史聊天记录数: ${userSessions.length}`);
+      
+      // 新用户判断逻辑：DOL等于初始值 且 亲密度为0 且 没有聊天记录
+      const isNewUser = userProfile.dol === expectedInitialDOL && 
+                       userProfile.intimacy === 0 && 
+                       !hasSessionHistory;
+      console.log(`   是否为新用户: ${isNewUser ? '是' : '否'} (DOL=${userProfile.dol}/${expectedInitialDOL}, 亲密度=${userProfile.intimacy}, 有记录=${hasSessionHistory})`);
       
       if (isNewUser) {
         console.log('🎊 新用户检测到，发送欢迎消息');
@@ -150,6 +159,18 @@ function setupBotEvents(client) {
         console.log(`📤 欢迎消息: "${welcomeMessage}"`);
         await message.reply(welcomeMessage);
         console.log('✅ 欢迎消息发送完成');
+        
+        // 重要：为新用户创建一条初始会话记录，避免下次仍被识别为新用户
+        console.log('📝 为新用户创建初始会话记录...');
+        await SessionService.saveSession(
+          userId,
+          userMessage,
+          welcomeMessage,
+          0, // 欢迎消息不消费token
+          0, // 初始HET值
+          0.5 // 中性情感得分
+        );
+        console.log('✅ 初始会话记录创建完成');
         return;
       }
       
