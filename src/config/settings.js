@@ -178,7 +178,7 @@ export const GAME_CONFIG = {
   // 📤 主动私聊配置/自动回复设置
   PROACTIVE_CHAT: {
     CHECK_INTERVAL: '0 */2 * * * *',      // 每2分钟检查一次
-    MIN_INTIMACY_REQUIRED: 40,            // 最低亲密度要求
+    MIN_INTIMACY_REQUIRED: 20,            // 最低亲密度要求
     COOLDOWN_HOURS: 12,                   // 发送间隔(小时)
     INACTIVE_HOURS: 0.05,                  // 用户需要非活跃多少小时才能收到主动消息（0.5 = 30分钟）
     MAX_DAILY_MESSAGES: 8,                // 每日最大发送数
