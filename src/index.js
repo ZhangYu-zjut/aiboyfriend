@@ -6,6 +6,7 @@ import { AIService } from './services/ai.js';
 import { WebhookService } from './services/webhook.js';
 import { commands, SlashCommandHandler } from './commands/slashCommands.js';
 import { RelationshipService } from './services/relationship.js';
+import { ProactiveChatService } from './services/proactive.js';
 import { GAME_CONFIG, FEATURE_FLAGS } from './config/settings.js';
 import { ProxyConfig } from './config/proxy.js';
 import { DiscordProxyConfig } from './config/discord-proxy.js';
@@ -108,6 +109,15 @@ function setupBotEvents(client) {
     
     // 设置每日重置任务
     WebhookService.setupDailyReset();
+    
+    // 🆕 启动主动私聊服务
+    if (FEATURE_FLAGS.PROACTIVE_CHAT) {
+      console.log('🚀 启动主动私聊服务...');
+      ProactiveChatService.startService(client);
+      console.log('✅ 主动私聊服务已启动');
+    } else {
+      console.log('⚪ 主动私聊服务已禁用');
+    }
     
     // 设置机器人状态
     client.user.setActivity('和小可爱们聊天 💕', { type: 'PLAYING' });

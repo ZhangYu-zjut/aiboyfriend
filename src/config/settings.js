@@ -179,10 +179,10 @@ export const GAME_CONFIG = {
   PROACTIVE_CHAT: {
     CHECK_INTERVAL: '0 */2 * * * *',      // 每2分钟检查一次
     MIN_INTIMACY_REQUIRED: 20,            // 最低亲密度要求
-    COOLDOWN_HOURS: 12,                   // 发送间隔(小时)
-    INACTIVE_HOURS: 0.05,                  // 用户需要非活跃多少小时才能收到主动消息（0.5 = 30分钟）
+    COOLDOWN_HOURS: 0.02,                 // 发送间隔(小时) - 测试用：3分钟
+    INACTIVE_HOURS: 0.02,                 // 用户需要非活跃多少小时才能收到主动消息（3分钟）
     MAX_DAILY_MESSAGES: 8,                // 每日最大发送数
-    PROBABILITY_BASE: 0.9,                // 基础发送概率
+    PROBABILITY_BASE: 1.0,                // 基础发送概率 - 测试用：100%
     INTIMACY_BONUS_FACTOR: 0.002          // 亲密度奖励因子
   },
 
