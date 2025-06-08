@@ -124,10 +124,28 @@ ${level.emoji} **说话风格**: ${level.style.tone}，${level.style.intimacy}
   }
 
   // 生成等级提升消息
-  static generateLevelUpMessage(userProfile, newLevel) {
+  static generateLevelUpMessage(userProfile, oldLevel, newLevel) {
     const nickname = this.getNickname(userProfile.intimacy);
     const templates = MESSAGE_TEMPLATES.LEVEL_UP;
-    const template = templates[Math.floor(Math.random() * templates.length)];
+    
+    // 根据具体的等级变化选择对应的消息模板
+    let templateKey = '';
+    
+    if (oldLevel.name === '陌生期' && newLevel.name === '熟悉期') {
+      templateKey = 'STRANGER_TO_FAMILIAR';
+    } else if (oldLevel.name === '熟悉期' && newLevel.name === '亲近期') {
+      templateKey = 'FAMILIAR_TO_CLOSE';
+    } else if (oldLevel.name === '亲近期' && newLevel.name === '甜蜜期') {
+      templateKey = 'CLOSE_TO_SWEET';
+    } else if (oldLevel.name === '甜蜜期' && newLevel.name === '热恋期') {
+      templateKey = 'SWEET_TO_PASSIONATE';
+    } else if (oldLevel.name === '热恋期' && newLevel.name === '深爱期') {
+      templateKey = 'PASSIONATE_TO_DEVOTED';
+    } else {
+      templateKey = 'GENERIC';
+    }
+    
+    const template = templates[templateKey] || templates.GENERIC;
     
     return template
       .replace('{nickname}', nickname)

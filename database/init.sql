@@ -114,4 +114,50 @@ CREATE POLICY "Allow service role full access" ON payments
 FOR ALL USING (auth.role() = 'service_role');
 
 CREATE POLICY "Allow service role full access" ON ab_events
-FOR ALL USING (auth.role() = 'service_role'); 
+FOR ALL USING (auth.role() = 'service_role');
+
+-- ⏰ 每日DOL重置函数
+CREATE OR REPLACE FUNCTION daily_reset_dol(
+  reset_amount INTEGER DEFAULT 100,
+  reset_threshold INTEGER DEFAULT 100
+)
+RETURNS TABLE(
+  affected_users INTEGER,
+  total_dol_added INTEGER
+) AS $$
+DECLARE
+  user_count INTEGER := 0;
+  dol_added INTEGER := 0;
+BEGIN
+  -- 更新所有DOL少于阈值的用户
+  WITH updated_users AS (
+    UPDATE profiles 
+    SET dol = reset_amount,
+        updated_at = NOW()
+    WHERE dol < reset_threshold
+    RETURNING user_id, (reset_amount - dol) as added_dol
+  )
+  SELECT 
+    COUNT(*)::INTEGER,
+    COALESCE(SUM(added_dol), 0)::INTEGER
+  INTO user_count, dol_added
+  FROM updated_users;
+  
+  -- 记录重置事件
+  INSERT INTO ab_events (user_id, event_type, group_name, metadata)
+  SELECT 
+    p.user_id,
+    'daily_dol_reset',
+    p.ab_group,
+    json_build_object(
+      'previous_dol', p.dol,
+      'new_dol', reset_amount,
+      'added_dol', (reset_amount - p.dol),
+      'reset_threshold', reset_threshold
+    )::jsonb
+  FROM profiles p
+  WHERE p.dol < reset_threshold;
+  
+  RETURN QUERY SELECT user_count, dol_added;
+END;
+$$ LANGUAGE plpgsql; 

@@ -5,6 +5,8 @@ import { EmotionService } from './services/emotion.js';
 import { AIService } from './services/ai.js';
 import { WebhookService } from './services/webhook.js';
 import { commands, SlashCommandHandler } from './commands/slashCommands.js';
+import { RelationshipService } from './services/relationship.js';
+import { GAME_CONFIG, FEATURE_FLAGS } from './config/settings.js';
 import { ProxyConfig } from './config/proxy.js';
 import { DiscordProxyConfig } from './config/discord-proxy.js';
 
@@ -259,12 +261,61 @@ function setupBotEvents(client) {
         console.log(`💕 最终亲密度增长: +${intimacyGain}`);
         
         console.log('📊 步骤8: 更新用户数据...');
+        
+        // 🆕 记录升级前的亲密度，用于等级升级检查
+        const oldIntimacy = userProfile.intimacy;
+        console.log(`📋 升级前亲密度: ${oldIntimacy}`);
+        
         // 更新用户档案
         await ProfileService.updateProfile(userId, {
           dolDelta: -30,
           intimacyDelta: intimacyGain
         });
         console.log('✅ 用户档案更新完成 (DOL -30, 亲密度 +' + intimacyGain + ')');
+        
+        // 🆕 等级升级检查和通知
+        if (FEATURE_FLAGS.LEVEL_UP_NOTIFICATIONS && intimacyGain > 0) {
+          const newIntimacy = oldIntimacy + intimacyGain;
+          console.log(`📈 升级后亲密度: ${newIntimacy}`);
+          
+          const levelUpCheck = RelationshipService.checkLevelUp(oldIntimacy, newIntimacy);
+          console.log(`🎭 等级检查: ${levelUpCheck.leveledUp ? '有升级' : '无升级'}`);
+          
+          if (levelUpCheck.leveledUp) {
+            console.log(`🎉 等级升级检测到: ${levelUpCheck.oldLevel.name} → ${levelUpCheck.newLevel.name}`);
+            
+            // 获取升级后的用户档案（包含最新亲密度）
+            const updatedProfile = await ProfileService.getOrCreateProfile(userId);
+            
+            // 生成等级升级庆祝消息
+            const levelUpMessage = RelationshipService.generateLevelUpMessage(
+              updatedProfile, 
+              levelUpCheck.oldLevel, 
+              levelUpCheck.newLevel
+            );
+            
+            // 创建特殊的升级消息格式
+            const celebrationMessage = `🎉✨ **关系升级啦！** ✨🎉\n\n` +
+              `${levelUpCheck.oldLevel.emoji} **${levelUpCheck.oldLevel.name}** → ${levelUpCheck.newLevel.emoji} **${levelUpCheck.newLevel.name}**\n\n` +
+              `${levelUpMessage}\n\n` +
+              `💕 当前亲密度: **${updatedProfile.intimacy}**`;
+            
+            // 发送升级庆祝消息
+            await message.channel.send(celebrationMessage);
+            console.log('🎊 等级升级庆祝消息发送成功');
+            
+            // 记录升级事件到数据库
+            await ProfileService.logABEvent(userId, 'level_up', userProfile.ab_group, {
+              old_level: levelUpCheck.oldLevel.name,
+              new_level: levelUpCheck.newLevel.name,
+              old_intimacy: oldIntimacy,
+              new_intimacy: newIntimacy,
+              intimacy_gain: intimacyGain,
+              upgrade_time: new Date().toISOString()
+            });
+            console.log('📝 等级升级事件记录完成');
+          }
+        }
         
         // 保存聊天记录
         await SessionService.saveSession(

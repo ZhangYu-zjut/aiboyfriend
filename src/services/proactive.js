@@ -64,6 +64,15 @@ export class ProactiveChatService {
             continue;
           }
 
+          // 🆕 概率判断逻辑
+          const shouldSend = this.calculateProbabilityAndCheck(userProfile);
+          if (!shouldSend.shouldSend) {
+            console.log(`🎲 用户 ${userProfile.user_id} 概率检查未通过: ${shouldSend.rollResult.toFixed(3)} > ${shouldSend.totalProbability.toFixed(3)} (${(shouldSend.totalProbability * 100).toFixed(1)}%)`);
+            continue;
+          }
+          
+          console.log(`🎯 用户 ${userProfile.user_id} 概率检查通过: ${shouldSend.rollResult.toFixed(3)} <= ${shouldSend.totalProbability.toFixed(3)} (${(shouldSend.totalProbability * 100).toFixed(1)}%)`);
+
           // 生成并发送主动消息
           const success = await this.sendProactiveMessage(discordClient, userProfile);
           if (success) {
@@ -88,6 +97,35 @@ export class ProactiveChatService {
     } catch (error) {
       console.error('❌ 主动私聊检查过程中出错:', error);
     }
+  }
+
+  // 🆕 计算概率并进行随机检查
+  static calculateProbabilityAndCheck(userProfile) {
+    const config = GAME_CONFIG.PROACTIVE_CHAT;
+    
+    // 计算总概率
+    const baseProb = config.PROBABILITY_BASE; // 基础概率 0.1
+    const intimacyBonus = userProfile.intimacy * config.INTIMACY_BONUS_FACTOR; // 亲密度奖励
+    const totalProbability = Math.min(baseProb + intimacyBonus, 1.0); // 最大不超过100%
+    
+    // 生成随机数进行判断
+    const rollResult = Math.random();
+    const shouldSend = rollResult <= totalProbability;
+    
+    console.log(`🎲 概率计算详情:`);
+    console.log(`   基础概率: ${baseProb}`);
+    console.log(`   亲密度奖励: ${userProfile.intimacy} × ${config.INTIMACY_BONUS_FACTOR} = ${intimacyBonus.toFixed(3)}`);
+    console.log(`   总概率: ${totalProbability.toFixed(3)} (${(totalProbability * 100).toFixed(1)}%)`);
+    console.log(`   随机结果: ${rollResult.toFixed(3)}`);
+    console.log(`   判断结果: ${shouldSend ? '✅ 触发' : '❌ 未触发'}`);
+    
+    return {
+      shouldSend,
+      totalProbability,
+      rollResult,
+      baseProb,
+      intimacyBonus
+    };
   }
 
   // 获取符合主动私聊条件的用户

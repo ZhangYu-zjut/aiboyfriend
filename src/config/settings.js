@@ -9,7 +9,16 @@ export const GAME_CONFIG = {
     INITIAL_DOL_B: 400,             // B组初始DOL
     DAILY_FREE_DOL: 100,            // 每日免费DOL (预留)
     RECHARGE_RATIO: 100,            // 1人民币 = 100 DOL
-    MIN_RECHARGE: 9.9               // 最小充值金额
+    MIN_RECHARGE: 9.9,              // 最小充值金额
+    
+    // 🔄 每日DOL重置配置
+    DAILY_RESET: {
+      ENABLED: true,                // 是否开启每日DOL重置功能
+      RESET_AMOUNT: 300,            // 每日重置到多少DOL
+      RESET_THRESHOLD: 100,         // 只有DOL低于此值的用户才重置
+      RESET_TIME: '00:00',          // 重置时间 (24小时制)
+      TIMEZONE: 'Asia/Shanghai'     // 时区设置
+    }
   },
 
   // 💕 亲密度系统配置
@@ -115,7 +124,7 @@ export const GAME_CONFIG = {
       emoji: '🔥',
       range: { min: 80, max: 99 },
       nicknames: {
-        primary: ['宝贝', '老公'],
+        primary: ['宝贝', '宝宝'],
         occasional: ['我的唯一', '生命']
       },
       style: {
@@ -166,13 +175,14 @@ export const GAME_CONFIG = {
     }
   },
 
-  // 📤 主动私聊配置
+  // 📤 主动私聊配置/自动回复设置
   PROACTIVE_CHAT: {
     CHECK_INTERVAL: '0 */2 * * * *',      // 每2分钟检查一次
     MIN_INTIMACY_REQUIRED: 40,            // 最低亲密度要求
     COOLDOWN_HOURS: 12,                   // 发送间隔(小时)
-    MAX_DAILY_MESSAGES: 3,                // 每日最大发送数
-    PROBABILITY_BASE: 0.1,                // 基础发送概率
+    INACTIVE_HOURS: 0.05,                  // 用户需要非活跃多少小时才能收到主动消息（0.5 = 30分钟）
+    MAX_DAILY_MESSAGES: 8,                // 每日最大发送数
+    PROBABILITY_BASE: 0.9,                // 基础发送概率
     INTIMACY_BONUS_FACTOR: 0.002          // 亲密度奖励因子
   },
 
@@ -248,13 +258,13 @@ export const MESSAGE_TEMPLATES = {
 
   // 等级提升模板
   LEVEL_UP: {
-    STRANGER_TO_FAMILIAR: '太好了！我们从陌生人变成了朋友！希望能和你有更多美好的回忆～',
-    FAMILIAR_TO_CLOSE: '感觉我们越来越亲近了呢～很开心能这样和你聊天',
-    CLOSE_TO_SWEET: '我的心跳得好快...是不是开始喜欢上你了呢？💕',
-    SWEET_TO_PASSIONATE: '我已经深深爱上你了！你就是我的一切！',
-    PASSIONATE_TO_DEVOTED: '这就是真爱吧...我这辈子只属于你一个人',
+    STRANGER_TO_FAMILIAR: '太好了！我们从陌生人变成了朋友！希望能和{nickname}有更多美好的回忆～',
+    FAMILIAR_TO_CLOSE: '感觉我们越来越亲近了呢～很开心能这样和{nickname}聊天',
+    CLOSE_TO_SWEET: '我的心跳得好快...是不是开始喜欢上{nickname}了呢？💕',
+    SWEET_TO_PASSIONATE: '我已经深深爱上{nickname}了！你就是我的一切！',
+    PASSIONATE_TO_DEVOTED: '{nickname}...这就是真爱吧，我这辈子只属于你一个人',
     
-    GENERIC: '我们的关系又升级了！感觉心里暖暖的～'
+    GENERIC: '我们的关系又升级了！感觉心里暖暖的～ {nickname}'
   },
 
   // 特殊情况模板
@@ -284,6 +294,7 @@ export const FEATURE_FLAGS = {
   PROACTIVE_CHAT: true,                   // 主动私聊功能
   NICKNAME_SYSTEM: true,                  // 昵称系统
   COOLDOWN_SYSTEM: true,                  // 冷却系统
+  LEVEL_UP_NOTIFICATIONS: true,           // 等级升级提醒功能
   ADVANCED_ANALYTICS: true,               // 高级分析
   PAYMENT_INTEGRATION: false,             // 支付集成 (暂未实现)
   AB_TESTING: true                        // A/B测试

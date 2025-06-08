@@ -1,5 +1,6 @@
 import express from 'express';
 import { ProfileService, PaymentService } from './database.js';
+import { GAME_CONFIG } from '../config/settings.js';
 
 const app = express();
 app.use(express.json());
@@ -108,6 +109,12 @@ export class WebhookService {
 
   // 处理每日重置任务
   static setupDailyReset() {
+    // 检查功能是否启用
+    if (!GAME_CONFIG.DOL.DAILY_RESET.ENABLED) {
+      console.log('💡 每日DOL重置功能已禁用');
+      return;
+    }
+
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -125,23 +132,57 @@ export class WebhookService {
       }, 24 * 60 * 60 * 1000);
     }, msUntilMidnight);
 
-    console.log(`⏰ 每日重置将在 ${tomorrow.toLocaleString()} 执行`);
+    console.log(`⏰ 每日DOL重置已启用，将在 ${tomorrow.toLocaleString()} 执行`);
+    console.log(`   重置金额: ${GAME_CONFIG.DOL.DAILY_RESET.RESET_AMOUNT} DOL`);
+    console.log(`   重置阈值: ${GAME_CONFIG.DOL.DAILY_RESET.RESET_THRESHOLD} DOL`);
   }
 
   // 执行每日重置
   static async performDailyReset() {
     try {
-      console.log('🔄 开始执行每日重置...');
+      // 检查功能是否启用
+      if (!GAME_CONFIG.DOL.DAILY_RESET.ENABLED) {
+        console.log('💡 每日DOL重置功能已禁用，跳过重置');
+        return;
+      }
+
+      console.log('🔄 开始执行每日DOL重置...');
+      console.log(`   配置: 重置到 ${GAME_CONFIG.DOL.DAILY_RESET.RESET_AMOUNT} DOL (阈值: ${GAME_CONFIG.DOL.DAILY_RESET.RESET_THRESHOLD})`);
       
-      // 这里可以添加重置逻辑，比如：
-      // 1. 重置用户的免费DOL额度
-      // 2. 清理过期的支付记录
-      // 3. 生成每日统计报告
+      // 调用数据库函数执行重置，使用配置参数
+      const { supabase } = await import('./database.js');
+      const { data, error } = await supabase.rpc('daily_reset_dol', {
+        reset_amount: GAME_CONFIG.DOL.DAILY_RESET.RESET_AMOUNT,
+        reset_threshold: GAME_CONFIG.DOL.DAILY_RESET.RESET_THRESHOLD
+      });
       
-      // 示例：给所有用户重置基础DOL（如果少于基础额度）
-      // await db.rpc('daily_reset_dol');
+      if (error) {
+        console.error('❌ 每日重置数据库操作失败:', error);
+        return;
+      }
       
-      console.log('✅ 每日重置完成');
+      const result = data && data.length > 0 ? data[0] : { affected_users: 0, total_dol_added: 0 };
+      console.log(`✅ 每日DOL重置完成:`);
+      console.log(`   受影响用户: ${result.affected_users}`);
+      console.log(`   发放总DOL: ${result.total_dol_added}`);
+      
+      // 记录系统事件
+      const { ProfileService } = await import('./database.js');
+      await ProfileService.logABEvent('SYSTEM', 'daily_reset_completed', 'SYSTEM', {
+        affected_users: result.affected_users,
+        total_dol_added: result.total_dol_added,
+        reset_amount: GAME_CONFIG.DOL.DAILY_RESET.RESET_AMOUNT,
+        reset_threshold: GAME_CONFIG.DOL.DAILY_RESET.RESET_THRESHOLD,
+        reset_time: new Date().toISOString()
+      });
+      
+      // 如果有用户受影响，记录额外日志
+      if (result.affected_users > 0) {
+        console.log(`🎉 ${result.affected_users} 位用户获得了免费DOL续费！`);
+      } else {
+        console.log(`💡 所有用户DOL余额充足，无需重置`);
+      }
+      
     } catch (error) {
       console.error('❌ 每日重置失败:', error);
     }
