@@ -1,9 +1,13 @@
 import express from 'express';
+import crypto from 'crypto';
 import { ProfileService } from './database.js';
 import { PaymentService } from './payment.js';
 import { GAME_CONFIG } from '../config/settings.js';
 
 const app = express();
+
+// 修复：添加rawBody中间件来获取原始请求体
+app.use('/webhook/creem', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
 export class WebhookService {
@@ -13,27 +17,79 @@ export class WebhookService {
     const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
     const baseUrl = process.env.APP_URL || (isProduction ? 'https://aiboyfriend-production.up.railway.app' : 'http://localhost:3000');
 
-    // Creem支付回调 - 修正路由路径
+    // Creem支付回调 - 修正路由路径和签名验证
     app.post('/webhook/creem', async (req, res) => {
       try {
-        console.log('🎯 收到Creem webhook:', req.body);
+        // 获取原始请求体用于签名验证
+        let rawBody = req.body;
+        let parsedBody;
         
-        const { event_type, data } = req.body;
+        if (Buffer.isBuffer(rawBody)) {
+          // 如果是Buffer，转换为字符串然后解析
+          const bodyString = rawBody.toString('utf8');
+          parsedBody = JSON.parse(bodyString);
+        } else {
+          // 如果已经是对象，直接使用
+          parsedBody = rawBody;
+          rawBody = JSON.stringify(rawBody);
+        }
+        
+        console.log('🎯 收到Creem webhook:', parsedBody);
+        
+        const { event_type, data } = parsedBody;
         
         // 验证webhook签名（如果有配置密钥）
         const signature = req.headers['creem-signature'] || req.headers['x-creem-signature'];
+        console.log('🔐 检查签名验证...');
+        console.log(`📝 接收到的签名: ${signature || '无'}`);
+        console.log(`🔑 Webhook密钥已配置: ${!!process.env.CREEM_WEBHOOK_SECRET}`);
+        
         if (process.env.CREEM_WEBHOOK_SECRET && signature) {
-          const isValid = await PaymentService.verifyWebhookSignature(req.body, signature);
+          console.log('🔍 开始验证Creem webhook签名...');
+          
+          // 根据Creem文档进行签名验证
+          const expectedSignature = crypto
+            .createHmac('sha256', process.env.CREEM_WEBHOOK_SECRET)
+            .update(rawBody)
+            .digest('hex');
+          
+          console.log(`📊 预期签名: ${expectedSignature}`);
+          console.log(`📨 接收签名: ${signature}`);
+          
+          // 比较签名（处理可能的sha256=前缀）
+          const receivedSignature = signature.startsWith('sha256=') ? signature.slice(7) : signature;
+          
+          let isValid = false;
+          try {
+            isValid = crypto.timingSafeEqual(
+              Buffer.from(expectedSignature, 'hex'),
+              Buffer.from(receivedSignature, 'hex')
+            );
+          } catch (error) {
+            console.error('❌ 签名格式错误:', error.message);
+            console.error(`❌ 预期: ${expectedSignature}`);
+            console.error(`❌ 实际: ${receivedSignature}`);
+            return res.status(401).json({ error: 'Invalid signature format' });
+          }
+          
           if (!isValid) {
             console.error('❌ Webhook签名验证失败');
+            console.error(`❌ 预期: ${expectedSignature}`);
+            console.error(`❌ 实际: ${receivedSignature}`);
             return res.status(401).json({ error: 'Invalid signature' });
           }
+          
+          console.log('✅ Webhook签名验证成功');
+        } else if (process.env.CREEM_WEBHOOK_SECRET) {
+          console.warn('⚠️  Webhook密钥已配置但未收到签名头，继续处理...');
+        } else {
+          console.warn('⚠️  Webhook密钥未配置，跳过签名验证');
         }
         
         if (event_type === 'checkout.completed' || event_type === 'payment.completed') {
           // 支付成功处理
           console.log('✅ 处理支付成功事件...');
-          const result = await PaymentService.handlePaymentSuccess(req.body);
+          const result = await PaymentService.handlePaymentSuccess(parsedBody);
           
           if (result.success) {
             console.log(`✅ 用户 ${result.userId} 充值成功: +${result.dolAmount} DOL`);
@@ -42,7 +98,7 @@ export class WebhookService {
         } else if (event_type === 'checkout.failed' || event_type === 'payment.failed') {
           // 支付失败处理
           console.log('❌ 处理支付失败事件...');
-          const result = await PaymentService.handlePaymentFailure(req.body);
+          const result = await PaymentService.handlePaymentFailure(parsedBody);
           
           if (result.userId) {
             console.log(`❌ 用户 ${result.userId} 充值失败: ${result.reason}`);
