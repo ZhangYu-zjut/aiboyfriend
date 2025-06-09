@@ -163,37 +163,92 @@ export class PaymentService {
       console.log('🔍 分析支付成功webhook数据结构...');
       console.log('📊 原始数据:', JSON.stringify(webhookData, null, 2));
       
-      // 兼容不同的数据格式
-      let paymentData;
-      if (webhookData.data) {
-        // 标准格式: { event_type: 'xxx', data: { ... } }
-        paymentData = webhookData.data;
-        console.log('✅ 使用标准格式: webhookData.data');
-      } else {
-        // 直接格式: { id: 'xxx', metadata: { ... }, ... }
-        paymentData = webhookData;
-        console.log('✅ 使用直接格式: webhookData');
+      // 提取关键字段 - 支持真实Creem格式
+      let request_id, metadata, amount, userId, packageKey, dolAmount;
+      
+      // 真实Creem格式: object字段包含支付数据
+      if (webhookData.request_id) {
+        request_id = webhookData.request_id;
+        metadata = webhookData.metadata;
+        amount = webhookData.amount || (webhookData.order && webhookData.order.amount);
+        console.log('✅ 检测到真实Creem格式，从object层级提取数据');
+      }
+      // 测试格式: data字段包含支付数据  
+      else if (webhookData.data && webhookData.data.request_id) {
+        const paymentData = webhookData.data;
+        request_id = paymentData.request_id;
+        metadata = paymentData.metadata;
+        amount = paymentData.amount;
+        console.log('✅ 检测到测试格式，从data层级提取数据');
+      }
+      // 直接格式: 顶层包含支付数据
+      else if (webhookData.id) {
+        request_id = webhookData.id;
+        metadata = webhookData.metadata;
+        amount = webhookData.amount;
+        console.log('✅ 检测到直接格式，从顶层提取数据');
       }
       
-      // 提取关键字段
-      const request_id = paymentData.request_id || paymentData.id;
-      const metadata = paymentData.metadata;
-      const amount = paymentData.amount;
-      
-      console.log('🔍 提取的字段:');
+      console.log('🔍 提取的基础字段:');
       console.log(`📋 request_id: ${request_id}`);
       console.log(`👤 metadata: ${JSON.stringify(metadata)}`);
       console.log(`💰 amount: ${amount}`);
       
-      if (!metadata || !metadata.discord_user_id) {
-        console.error('❌ 缺少必要的metadata信息');
-        console.error('📄 完整数据:', JSON.stringify(webhookData, null, 2));
-        throw new Error('Missing required metadata');
+      // 从request_id中提取用户信息（备用方案）
+      if (!metadata && request_id && request_id.includes('aiboyfriend_')) {
+        console.log('🔄 尝试从request_id提取用户信息...');
+        const parts = request_id.split('_');
+        if (parts.length >= 2) {
+          userId = parts[1];
+          console.log(`📋 从request_id提取的用户ID: ${userId}`);
+          
+          // 根据金额推断套餐
+          if (amount === 450 || amount === 4.5) {
+            packageKey = 'starter';
+            dolAmount = 450;
+          } else if (amount === 1000 || amount === 9.9) {
+            packageKey = 'basic';
+            dolAmount = 1000;
+          } else if (amount === 2200 || amount === 19.9) {
+            packageKey = 'standard';
+            dolAmount = 2200;
+          } else if (amount === 6000 || amount === 49.9) {
+            packageKey = 'premium';
+            dolAmount = 6000;
+          } else {
+            console.warn(`⚠️  未知金额 ${amount}，使用默认值`);
+            packageKey = 'starter';
+            dolAmount = 450;
+          }
+          
+          console.log(`🔄 推断套餐信息: ${packageKey}, DOL: ${dolAmount}`);
+        }
       }
       
-      const userId = metadata.discord_user_id;
-      const packageKey = metadata.package_key;
-      const dolAmount = parseInt(metadata.dol_amount);
+      // 从metadata提取用户信息（优先方案）
+      if (metadata && metadata.discord_user_id) {
+        userId = metadata.discord_user_id;
+        packageKey = metadata.package_key;
+        dolAmount = parseInt(metadata.dol_amount);
+        console.log('✅ 从metadata成功提取用户信息');
+      }
+      
+      console.log('🔍 最终提取的字段:');
+      console.log(`👤 用户ID: ${userId}`);
+      console.log(`📦 套餐: ${packageKey}`);
+      console.log(`💎 DOL数量: ${dolAmount}`);
+      console.log(`💰 支付金额: ${amount}`);
+      
+      if (!userId) {
+        console.error('❌ 无法提取用户ID');
+        console.error('📄 完整数据:', JSON.stringify(webhookData, null, 2));
+        throw new Error('Missing user ID');
+      }
+      
+      if (!dolAmount || dolAmount <= 0) {
+        console.error('❌ 无效的DOL数量');
+        throw new Error('Invalid DOL amount');
+      }
 
       console.log(`📋 处理支付成功: 用户${userId}, DOL${dolAmount}, 套餐${packageKey}`);
 

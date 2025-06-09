@@ -6,9 +6,25 @@ import { GAME_CONFIG } from '../config/settings.js';
 
 const app = express();
 
-// 修复：添加rawBody中间件来获取原始请求体
-app.use('/webhook/creem', express.raw({ type: 'application/json' }));
-app.use(express.json());
+// 全局JSON中间件，但排除webhook路径
+app.use('/webhook/creem', (req, res, next) => {
+  // 为webhook路径使用原始请求体
+  const chunks = [];
+  req.on('data', chunk => chunks.push(chunk));
+  req.on('end', () => {
+    req.rawBody = Buffer.concat(chunks);
+    req.body = JSON.parse(req.rawBody.toString('utf8'));
+    next();
+  });
+});
+
+// 其他路径使用普通JSON解析
+app.use((req, res, next) => {
+  if (req.path.startsWith('/webhook/creem')) {
+    return next();
+  }
+  express.json()(req, res, next);
+});
 
 export class WebhookService {
   static startWebhookServer() {
@@ -20,59 +36,61 @@ export class WebhookService {
     // Creem支付回调 - 修正路由路径和签名验证
     app.post('/webhook/creem', async (req, res) => {
       try {
-        // 获取原始请求体用于签名验证
-        let rawBody = req.body;
-        let parsedBody;
-        
-        if (Buffer.isBuffer(rawBody)) {
-          // 如果是Buffer，转换为字符串然后解析
-          const bodyString = rawBody.toString('utf8');
-          parsedBody = JSON.parse(bodyString);
-        } else {
-          // 如果已经是对象，直接使用
-          parsedBody = rawBody;
-          rawBody = JSON.stringify(rawBody);
-        }
+        // 使用新的rawBody和解析后的body
+        const rawBody = req.rawBody;
+        const parsedBody = req.body;
         
         console.log('🎯 收到Creem webhook:', parsedBody);
         
-        const { event_type, data } = parsedBody;
+        // 分析真实的Creem webhook数据结构
+        const { event_type, eventType, data, object } = parsedBody;
         
         // 详细调试信息
         console.log('🔍 事件类型分析:');
         console.log(`📋 event_type: "${event_type}" (类型: ${typeof event_type})`);
+        console.log(`📋 eventType: "${eventType}" (类型: ${typeof eventType})`);
         console.log(`📊 data存在: ${!!data}`);
+        console.log(`📊 object存在: ${!!object}`);
         console.log(`🗂️ 完整数据结构:`, Object.keys(parsedBody));
         
         // 兼容不同的Creem webhook格式
-        let actualEventType = event_type;
-        let actualData = data;
+        let actualEventType;
+        let actualData;
         
-        // 如果没有event_type，检查是否是其他格式
-        if (!actualEventType) {
-          // 检查是否直接包含事件信息
-          if (parsedBody.type) {
-            actualEventType = parsedBody.type;
-            actualData = parsedBody;
-            console.log(`🔄 使用备用事件类型字段: ${actualEventType}`);
-          } else if (parsedBody.event) {
-            actualEventType = parsedBody.event;
-            actualData = parsedBody.data || parsedBody;
-            console.log(`🔄 使用event字段: ${actualEventType}`);
+        // 优先使用真实Creem格式：eventType + object
+        if (eventType && object) {
+          actualEventType = eventType;
+          actualData = object;
+          console.log(`✅ 使用真实Creem格式: eventType=${eventType}, 数据在object中`);
+        }
+        // 备用格式：event_type + data
+        else if (event_type && data) {
+          actualEventType = event_type;
+          actualData = data;
+          console.log(`✅ 使用测试格式: event_type=${event_type}, 数据在data中`);
+        }
+        // 检查其他可能格式
+        else if (parsedBody.type) {
+          actualEventType = parsedBody.type;
+          actualData = parsedBody;
+          console.log(`🔄 使用备用事件类型字段: ${actualEventType}`);
+        } else if (parsedBody.event) {
+          actualEventType = parsedBody.event;
+          actualData = parsedBody.data || parsedBody;
+          console.log(`🔄 使用event字段: ${actualEventType}`);
+        } else {
+          // 尝试从数据结构推断事件类型
+          if (parsedBody.status === 'completed' || (object && object.status === 'completed')) {
+            actualEventType = 'checkout.completed';
+            actualData = object || parsedBody;
+            console.log(`🔄 从状态推断事件类型: ${actualEventType}`);
+          } else if (parsedBody.status === 'failed' || (object && object.status === 'failed')) {
+            actualEventType = 'checkout.failed';
+            actualData = object || parsedBody;
+            console.log(`🔄 从状态推断事件类型: ${actualEventType}`);
           } else {
-            // 尝试从数据结构推断事件类型
-            if (parsedBody.status === 'completed') {
-              actualEventType = 'checkout.completed';
-              actualData = parsedBody;
-              console.log(`🔄 从状态推断事件类型: ${actualEventType}`);
-            } else if (parsedBody.status === 'failed') {
-              actualEventType = 'checkout.failed';
-              actualData = parsedBody;
-              console.log(`🔄 从状态推断事件类型: ${actualEventType}`);
-            } else {
-              console.error('❌ 无法确定事件类型，将记录原始数据用于调试');
-              console.error('📄 原始webhook数据:', JSON.stringify(parsedBody, null, 2));
-            }
+            console.error('❌ 无法确定事件类型，将记录原始数据用于调试');
+            console.error('📄 原始webhook数据:', JSON.stringify(parsedBody, null, 2));
           }
         }
         
