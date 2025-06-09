@@ -38,6 +38,46 @@ export class WebhookService {
         
         const { event_type, data } = parsedBody;
         
+        // 详细调试信息
+        console.log('🔍 事件类型分析:');
+        console.log(`📋 event_type: "${event_type}" (类型: ${typeof event_type})`);
+        console.log(`📊 data存在: ${!!data}`);
+        console.log(`🗂️ 完整数据结构:`, Object.keys(parsedBody));
+        
+        // 兼容不同的Creem webhook格式
+        let actualEventType = event_type;
+        let actualData = data;
+        
+        // 如果没有event_type，检查是否是其他格式
+        if (!actualEventType) {
+          // 检查是否直接包含事件信息
+          if (parsedBody.type) {
+            actualEventType = parsedBody.type;
+            actualData = parsedBody;
+            console.log(`🔄 使用备用事件类型字段: ${actualEventType}`);
+          } else if (parsedBody.event) {
+            actualEventType = parsedBody.event;
+            actualData = parsedBody.data || parsedBody;
+            console.log(`🔄 使用event字段: ${actualEventType}`);
+          } else {
+            // 尝试从数据结构推断事件类型
+            if (parsedBody.status === 'completed') {
+              actualEventType = 'checkout.completed';
+              actualData = parsedBody;
+              console.log(`🔄 从状态推断事件类型: ${actualEventType}`);
+            } else if (parsedBody.status === 'failed') {
+              actualEventType = 'checkout.failed';
+              actualData = parsedBody;
+              console.log(`🔄 从状态推断事件类型: ${actualEventType}`);
+            } else {
+              console.error('❌ 无法确定事件类型，将记录原始数据用于调试');
+              console.error('📄 原始webhook数据:', JSON.stringify(parsedBody, null, 2));
+            }
+          }
+        }
+        
+        console.log(`✅ 最终事件类型: "${actualEventType}"`);
+        
         // 验证webhook签名（如果有配置密钥）
         const signature = req.headers['creem-signature'] || req.headers['x-creem-signature'];
         console.log('🔐 检查签名验证...');
@@ -86,26 +126,26 @@ export class WebhookService {
           console.warn('⚠️  Webhook密钥未配置，跳过签名验证');
         }
         
-        if (event_type === 'checkout.completed' || event_type === 'payment.completed') {
+        if (actualEventType === 'checkout.completed' || actualEventType === 'payment.completed') {
           // 支付成功处理
           console.log('✅ 处理支付成功事件...');
-          const result = await PaymentService.handlePaymentSuccess(parsedBody);
+          const result = await PaymentService.handlePaymentSuccess(actualData);
           
           if (result.success) {
             console.log(`✅ 用户 ${result.userId} 充值成功: +${result.dolAmount} DOL`);
           }
           
-        } else if (event_type === 'checkout.failed' || event_type === 'payment.failed') {
+        } else if (actualEventType === 'checkout.failed' || actualEventType === 'payment.failed') {
           // 支付失败处理
           console.log('❌ 处理支付失败事件...');
-          const result = await PaymentService.handlePaymentFailure(parsedBody);
+          const result = await PaymentService.handlePaymentFailure(actualData);
           
           if (result.userId) {
             console.log(`❌ 用户 ${result.userId} 充值失败: ${result.reason}`);
           }
           
         } else {
-          console.log(`ℹ️  未处理的事件类型: ${event_type}`);
+          console.log(`ℹ️  未处理的事件类型: ${actualEventType}`);
         }
 
         res.status(200).json({ status: 'success', received: true });

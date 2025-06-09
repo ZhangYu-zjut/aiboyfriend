@@ -1,64 +1,58 @@
 #!/usr/bin/env node
 
-// 监控支付后的DOL余额变化
+// 监控用户DOL余额变化
 import 'dotenv/config';
 import { ProfileService } from './src/services/database.js';
 
-const USER_ID = '1113108345998549102';
-const EXPECTED_INCREASE = 450;
+const USER_ID = '1113108345998549102'; // 你的真实用户ID
 
 async function monitorBalance() {
   console.log('💰 ================ DOL余额监控 ================');
   console.log(`👤 监控用户: ${USER_ID}`);
-  console.log(`📈 预期增加: +${EXPECTED_INCREASE} DOL`);
-  console.log('⏰ 每10秒检查一次，最多监控5分钟...\n');
+  console.log('⏰ 每5秒检查一次余额变化...\n');
   
-  // 获取初始余额
-  const initialProfile = await ProfileService.getOrCreateProfile(USER_ID);
-  const initialDol = initialProfile.dol;
-  console.log(`📊 当前余额: ${initialDol} DOL`);
-  console.log(`🎯 目标余额: ${initialDol + EXPECTED_INCREASE} DOL\n`);
+  let lastBalance = null;
+  let checkCount = 0;
   
-  const startTime = Date.now();
-  const maxWaitMs = 5 * 60 * 1000; // 5分钟
-  
-  while (Date.now() - startTime < maxWaitMs) {
+  const checkBalance = async () => {
     try {
-      const currentProfile = await ProfileService.getOrCreateProfile(USER_ID);
-      const currentDol = currentProfile.dol;
-      const increase = currentDol - initialDol;
+      checkCount++;
+      const profile = await ProfileService.getOrCreateProfile(USER_ID);
+      const currentBalance = profile.dol;
       
-      const timestamp = new Date().toLocaleString('zh-CN');
-      console.log(`[${timestamp}] 💰 当前余额: ${currentDol} DOL (+${increase})`);
+      const timestamp = new Date().toLocaleTimeString('zh-CN');
       
-      if (increase >= EXPECTED_INCREASE) {
-        console.log('\n🎉 ================ 支付成功！ ================');
-        console.log(`✅ DOL余额已更新: ${initialDol} → ${currentDol} (+${increase})`);
-        console.log('💕 可以继续和AI男友愉快聊天了~');
-        return;
+      if (lastBalance === null) {
+        console.log(`[${timestamp}] 📊 初始余额: ${currentBalance} DOL`);
+        lastBalance = currentBalance;
+      } else if (currentBalance !== lastBalance) {
+        const change = currentBalance - lastBalance;
+        const changeStr = change > 0 ? `+${change}` : `${change}`;
+        console.log(`[${timestamp}] 🔄 余额变化: ${lastBalance} → ${currentBalance} DOL (${changeStr})`);
+        
+        if (change > 0) {
+          console.log(`🎉 检测到充值成功！增加了 ${change} DOL`);
+        }
+        
+        lastBalance = currentBalance;
+      } else {
+        console.log(`[${timestamp}] ✅ 余额稳定: ${currentBalance} DOL (检查次数: ${checkCount})`);
       }
-      
-      if (increase > 0 && increase < EXPECTED_INCREASE) {
-        console.log(`⚠️  部分到账: +${increase} DOL，继续监控...`);
-      }
-      
-      // 等待10秒
-      await new Promise(resolve => setTimeout(resolve, 10000));
       
     } catch (error) {
-      console.error(`❌ 余额检查失败: ${error.message}`);
+      console.error(`❌ 获取余额失败:`, error.message);
     }
-  }
+  };
   
-  console.log('\n⏰ ================ 监控超时 ================');
-  console.log('💡 DOL余额未更新，可能的原因:');
-  console.log('   1. 支付实际未完成');
-  console.log('   2. Webhook配置不正确');
-  console.log('   3. Webhook处理过程出错');
-  console.log('\n🔍 建议检查:');
-  console.log('   - Creem Dashboard中的webhook配置');
-  console.log('   - Railway应用日志');
-  console.log('   - 支付是否真的成功');
+  // 立即检查一次
+  await checkBalance();
+  
+  // 然后每5秒检查一次
+  setInterval(checkBalance, 5000);
 }
+
+console.log('🚀 启动DOL余额监控...');
+console.log('💡 在另一个终端进行支付测试，这里会实时显示余额变化');
+console.log('⏹️  按 Ctrl+C 停止监控\n');
 
 monitorBalance().catch(console.error); 

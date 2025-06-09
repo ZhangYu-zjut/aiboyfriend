@@ -160,19 +160,51 @@ export class PaymentService {
   // 处理支付成功webhook
   static async handlePaymentSuccess(webhookData) {
     try {
-      const { request_id, metadata, amount } = webhookData.data;
+      console.log('🔍 分析支付成功webhook数据结构...');
+      console.log('📊 原始数据:', JSON.stringify(webhookData, null, 2));
+      
+      // 兼容不同的数据格式
+      let paymentData;
+      if (webhookData.data) {
+        // 标准格式: { event_type: 'xxx', data: { ... } }
+        paymentData = webhookData.data;
+        console.log('✅ 使用标准格式: webhookData.data');
+      } else {
+        // 直接格式: { id: 'xxx', metadata: { ... }, ... }
+        paymentData = webhookData;
+        console.log('✅ 使用直接格式: webhookData');
+      }
+      
+      // 提取关键字段
+      const request_id = paymentData.request_id || paymentData.id;
+      const metadata = paymentData.metadata;
+      const amount = paymentData.amount;
+      
+      console.log('🔍 提取的字段:');
+      console.log(`📋 request_id: ${request_id}`);
+      console.log(`👤 metadata: ${JSON.stringify(metadata)}`);
+      console.log(`💰 amount: ${amount}`);
+      
+      if (!metadata || !metadata.discord_user_id) {
+        console.error('❌ 缺少必要的metadata信息');
+        console.error('📄 完整数据:', JSON.stringify(webhookData, null, 2));
+        throw new Error('Missing required metadata');
+      }
+      
       const userId = metadata.discord_user_id;
       const packageKey = metadata.package_key;
       const dolAmount = parseInt(metadata.dol_amount);
 
-      console.log(`收到支付成功webhook: 用户${userId}, DOL${dolAmount}`);
+      console.log(`📋 处理支付成功: 用户${userId}, DOL${dolAmount}, 套餐${packageKey}`);
 
       // 1. 更新用户DOL余额
+      console.log(`💰 更新用户DOL余额: ${userId} +${dolAmount}`);
       await ProfileService.updateProfile(userId, {
         dolDelta: dolAmount
       });
 
       // 2. 记录支付成功事件
+      console.log(`📝 记录支付事件到数据库`);
       await ProfileService.logABEvent(userId, 'payment_completed', 'P', {
         request_id: request_id,
         package_key: packageKey,
@@ -183,9 +215,10 @@ export class PaymentService {
       });
 
       // 3. 发送Discord通知
+      console.log(`📱 发送Discord通知给用户 ${userId}`);
       await this.sendPaymentSuccessNotification(userId, dolAmount, packageKey, request_id);
 
-      console.log(`✅ 用户 ${userId} 充值成功: +${dolAmount} DOL`);
+      console.log(`✅ 用户 ${userId} 充值处理完成: +${dolAmount} DOL`);
       
       return {
         success: true,
@@ -195,7 +228,8 @@ export class PaymentService {
       };
 
     } catch (error) {
-      console.error('处理支付成功失败:', error);
+      console.error('❌ 处理支付成功失败:', error);
+      console.error('📄 webhook数据:', JSON.stringify(webhookData, null, 2));
       throw error;
     }
   }
