@@ -262,20 +262,17 @@ export class PaymentService {
 
       console.log(`📋 处理支付成功: 用户${userId}, DOL${dolAmount}, 套餐${packageKey}`);
 
-      // 1. 保存支付记录到payments表
-      console.log(`💳 保存支付记录到payments表`);
+      // 1. 确认支付完成 - 更新已存在的支付记录状态并发放DOL
+      console.log(`💳 确认支付完成: ${request_id}`);
       const actualAmount = amount && amount > 100 ? amount / 100 : (amount || 4.5); // 处理分/美元转换
       try {
-        await DatabasePaymentService.createPayment(userId, actualAmount, dolAmount, request_id);
-        console.log(`✅ 支付记录已保存到payments表`);
-        
-        // 确认支付完成 - 这会自动更新DOL余额
+        // 只确认支付，不创建新记录（记录已在创建充值会话时创建）
         await DatabasePaymentService.confirmPayment(request_id);
         console.log(`✅ 支付状态已更新为completed，DOL余额已更新`);
       } catch (paymentError) {
-        console.error(`❌ 支付记录保存失败: ${paymentError.message}`);
-        // 如果支付记录保存失败，仍然继续更新DOL余额（兼容性）
-        console.log(`🔄 支付记录失败，继续直接更新DOL余额...`);
+        console.error(`❌ 支付确认失败: ${paymentError.message}`);
+        // 如果支付确认失败，尝试直接更新DOL余额（兼容性处理）
+        console.log(`🔄 支付确认失败，尝试直接更新DOL余额...`);
         await ProfileService.updateProfile(userId, {
           dolDelta: dolAmount
         });
