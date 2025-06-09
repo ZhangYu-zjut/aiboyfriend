@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { ProfileService } from './database.js';
+import { ProfileService, PaymentService as DatabasePaymentService, db } from './database.js';
 import { GAME_CONFIG } from '../config/settings.js';
 import { EmbedBuilder } from 'discord.js';
 import { PaymentFallbackService } from './payment-fallback.js';
@@ -139,7 +139,17 @@ export class PaymentService {
   // 保存充值记录到数据库
   static async saveRechargeRecord(userId, requestId, packageInfo, status) {
     try {
-      // 使用现有的ProfileService记录事件
+      // 1. 保存到payments表
+      console.log(`💳 保存支付记录到payments表: ${userId}, ${packageInfo.name}`);
+      await DatabasePaymentService.createPayment(
+        userId, 
+        packageInfo.amount_usd, 
+        packageInfo.dol, 
+        requestId
+      );
+      console.log(`✅ payments表记录已创建`);
+
+      // 2. 记录A/B测试事件
       await ProfileService.logABEvent(userId, 'recharge_initiated', 'P', {
         request_id: requestId,
         package_name: packageInfo.name,
@@ -252,19 +262,33 @@ export class PaymentService {
 
       console.log(`📋 处理支付成功: 用户${userId}, DOL${dolAmount}, 套餐${packageKey}`);
 
-      // 1. 更新用户DOL余额
-      console.log(`💰 更新用户DOL余额: ${userId} +${dolAmount}`);
-      await ProfileService.updateProfile(userId, {
-        dolDelta: dolAmount
-      });
+      // 1. 保存支付记录到payments表
+      console.log(`💳 保存支付记录到payments表`);
+      const actualAmount = amount && amount > 100 ? amount / 100 : (amount || 4.5); // 处理分/美元转换
+      try {
+        await DatabasePaymentService.createPayment(userId, actualAmount, dolAmount, request_id);
+        console.log(`✅ 支付记录已保存到payments表`);
+        
+        // 确认支付完成 - 这会自动更新DOL余额
+        await DatabasePaymentService.confirmPayment(request_id);
+        console.log(`✅ 支付状态已更新为completed，DOL余额已更新`);
+      } catch (paymentError) {
+        console.error(`❌ 支付记录保存失败: ${paymentError.message}`);
+        // 如果支付记录保存失败，仍然继续更新DOL余额（兼容性）
+        console.log(`🔄 支付记录失败，继续直接更新DOL余额...`);
+        await ProfileService.updateProfile(userId, {
+          dolDelta: dolAmount
+        });
+        console.log(`✅ DOL余额已直接更新`);
+      }
 
-      // 2. 记录支付成功事件
-      console.log(`📝 记录支付事件到数据库`);
+      // 2. 记录支付成功事件（用于A/B测试和分析）
+      console.log(`📝 记录支付事件到ab_events表`);
       await ProfileService.logABEvent(userId, 'payment_completed', 'P', {
         request_id: request_id,
         package_key: packageKey,
         dol_amount: dolAmount,
-        amount_usd: amount,
+        amount_usd: actualAmount,
         completed_at: new Date().toISOString(),
         status: 'completed'
       });
@@ -298,7 +322,28 @@ export class PaymentService {
 
       console.log(`收到支付失败webhook: 用户${userId}, 原因: ${failure_reason}`);
 
-      // 记录支付失败事件
+      // 1. 更新payments表状态为failed
+      try {
+        console.log(`💳 更新payments表状态为failed: ${request_id}`);
+        const { data, error } = await db
+          .from('payments')
+          .update({ 
+            status: 'failed'
+          })
+          .eq('payment_id', request_id)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('❌ 更新支付状态失败:', error);
+        } else {
+          console.log('✅ 支付状态已更新为failed');
+        }
+      } catch (updateError) {
+        console.error('❌ 更新支付记录失败:', updateError.message);
+      }
+
+      // 2. 记录支付失败事件
       await ProfileService.logABEvent(userId, 'payment_failed', 'P', {
         request_id: request_id,
         package_key: packageKey,
@@ -307,7 +352,7 @@ export class PaymentService {
         status: 'failed'
       });
 
-      // 发送Discord失败通知
+      // 3. 发送Discord失败通知
       await this.sendPaymentFailureNotification(userId, packageKey, failure_reason, request_id);
 
       console.log(`❌ 用户 ${userId} 充值失败: ${failure_reason}`);
