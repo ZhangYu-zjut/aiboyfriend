@@ -168,6 +168,24 @@ export class SlashCommandHandler {
       
       // 创建支付会话
       const session = await PaymentService.createRechargeSession(userId, packageKey);
+      
+      // 检查是否为备用模式
+      if (session.fallback_mode) {
+        console.log('🔄 使用备用模式响应充值请求');
+        
+        // 使用备用服务生成消息
+        const fallbackMessage = PaymentService.generateRechargeMessage(packageKey);
+        
+        await interaction.reply({
+          ...fallbackMessage,
+          ephemeral: true
+        });
+        
+        console.log(`⚠️  备用模式充值响应: 用户${userId}, 套餐${packageKey}`);
+        return;
+      }
+      
+      // 正常Creem模式
       const messageData = PaymentService.generateRechargeMessage(packageKey);
       
       const embed = new EmbedBuilder()
@@ -213,10 +231,26 @@ export class SlashCommandHandler {
 
     } catch (error) {
       console.error('处理具体充值失败:', error);
-      await interaction.reply({
-        content: '❌ 创建支付链接失败，请稍后重试或联系客服',
-        ephemeral: true
-      });
+      
+      // 如果主服务失败，尝试使用备用模式
+      try {
+        console.log('🔄 主服务失败，尝试备用模式...');
+        const { PaymentFallbackService } = await import('../services/payment-fallback.js');
+        const fallbackMessage = PaymentFallbackService.generateRechargeMessage(packageKey);
+        
+        await interaction.reply({
+          ...fallbackMessage,
+          ephemeral: true
+        });
+        
+        console.log(`⚠️  降级到备用模式: 用户${interaction.user.id}, 套餐${packageKey}`);
+      } catch (fallbackError) {
+        console.error('备用模式也失败:', fallbackError);
+        await interaction.reply({
+          content: '❌ 充值功能暂时不可用，请稍后重试或联系客服\n\n💡 您仍可以使用每日免费的DOL继续聊天！',
+          ephemeral: true
+        });
+      }
     }
   }
 

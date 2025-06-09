@@ -1,6 +1,7 @@
 // OpenRouter API 配置
 import { GAME_CONFIG, MESSAGE_TEMPLATES } from '../config/settings.js';
 import { RelationshipService } from './relationship.js';
+import { BackupAIService } from './ai-backup.js';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -44,18 +45,9 @@ export class AIService {
       console.log(`   OPENROUTER_KEY: ${process.env.OPENROUTER_KEY ? '✅ 存在' : '❌ 不存在'}`);
       console.log(`   最终使用的密钥: ${OPENROUTER_API_KEY ? '✅ 已获取' : '❌ 未获取'}`);
       
-      if (!OPENROUTER_API_KEY) {
-        console.error('❌ 无法获取OpenRouter API密钥');
-        console.error('🔍 调试信息:');
-        console.error(`   当前环境: ${process.env.NODE_ENV || '未知'}`);
-        console.error(`   Railway环境: ${process.env.RAILWAY_ENVIRONMENT || '否'}`);
-        console.error(`   可用环境变量数: ${Object.keys(process.env).length}`);
-        console.error('💡 建议解决方案:');
-        console.error('   1. 检查Railway Variables页面的配置');
-        console.error('   2. 重新创建OPENROUTER_API_KEY变量');
-        console.error('   3. 确保变量不是Shared Variable');
-        console.error('   4. 重启Railway服务');
-        throw new Error('OPENROUTER_API_KEY 未配置');
+      if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY.startsWith('your_')) {
+        console.warn('⚠️ OpenRouter API密钥无效，尝试使用备用AI服务...');
+        return await BackupAIService.generateReply(userMessage, userProfile, chatHistory);
       }
       console.log('✅ OpenRouter API密钥已配置');
       
@@ -145,6 +137,12 @@ export class AIService {
             console.error('无法读取错误响应');
           }
           
+          // 🆕 如果OpenRouter失败，尝试备用AI服务
+          if (response.status === 401 || response.status === 403 || response.status === 429) {
+            console.warn('⚠️ OpenRouter API认证/配额问题，尝试使用备用AI服务...');
+            return await BackupAIService.generateReply(userMessage, userProfile, chatHistory);
+          }
+          
           throw new Error(`OpenRouter API 请求失败: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
@@ -159,7 +157,9 @@ export class AIService {
         if (!data.choices || data.choices.length === 0) {
           console.error('❌ OpenRouter API返回数据格式异常');
           console.error('完整响应:', JSON.stringify(data, null, 2));
-          throw new Error('OpenRouter API 返回数据格式异常');
+          // 🆕 数据异常也使用备用服务
+          console.warn('⚠️ OpenRouter数据异常，尝试使用备用AI服务...');
+          return await BackupAIService.generateReply(userMessage, userProfile, chatHistory);
         }
 
         const reply = data.choices[0].message.content;
@@ -177,6 +177,7 @@ export class AIService {
           reply,
           tokens,
           usage: data.usage || { total_tokens: tokens, prompt_tokens: 0, completion_tokens: 0 },
+          provider: 'OpenRouter',
           relationshipInfo: {
             level: relationshipLevel,
             nickname: nickname
@@ -190,7 +191,8 @@ export class AIService {
         clearTimeout(timeoutId);
         
         if (fetchError.name === 'AbortError') {
-          throw new Error(`API请求超时 (>${timeout}ms)`);
+          console.warn('⚠️ OpenRouter API超时，尝试使用备用AI服务...');
+          return await BackupAIService.generateReply(userMessage, userProfile, chatHistory);
         }
         throw fetchError;
       }
@@ -198,29 +200,17 @@ export class AIService {
     } catch (error) {
       console.error('❌ ==================== AI回复生成失败 ====================');
       console.error('错误类型:', error.constructor.name);
-      console.error('错误消息:', error.message);
+      console.error('错误信息:', error.message);
       console.error('错误堆栈:', error.stack);
       
-      // 根据错误类型提供更详细的信息
-      if (error.message.includes('quota') || error.message.includes('insufficient')) {
-        console.error('💳 可能原因: API配额用尽');
-      } else if (error.message.includes('invalid') || error.message.includes('unauthorized')) {
-        console.error('🔑 可能原因: API Key无效');
-      } else if (error.message.includes('network') || error.message.includes('timeout') || error.message.includes('fetch')) {
-        console.error('🌐 可能原因: 网络连接问题');
-      } else if (error.message.includes('rate') || error.message.includes('429')) {
-        console.error('⏱️  可能原因: 请求频率过高');
-      } else if (error.message.includes('500') || error.message.includes('502') || error.message.includes('503')) {
-        console.error('🔧 可能原因: 服务器内部错误');
+      // 🆕 最终备用方案：使用备用AI服务
+      console.warn('⚠️ 主AI服务完全失败，尝试使用备用AI服务...');
+      try {
+        return await BackupAIService.generateReply(userMessage, userProfile, chatHistory);
+      } catch (backupError) {
+        console.error('❌ 备用AI服务也失败，使用预设回复');
+        return this.getFallbackReply(userMessage, userProfile);
       }
-      
-      console.log('🔄 准备使用降级回复机制...');
-      const fallbackResult = this.getFallbackReply(userMessage, userProfile);
-      console.log(`📤 降级回复: "${fallbackResult.reply}"`);
-      console.error('🔚 ==================== AI服务错误处理完成 ====================');
-      
-      // 重新抛出错误，让上层处理
-      throw error;
     }
   }
 

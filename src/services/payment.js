@@ -2,6 +2,7 @@ import axios from 'axios';
 import { ProfileService } from './database.js';
 import { GAME_CONFIG } from '../config/settings.js';
 import { EmbedBuilder } from 'discord.js';
+import { PaymentFallbackService } from './payment-fallback.js';
 
 // Creem配置
 const CREEM_API_URL = 'https://api.creem.io/v1';
@@ -56,11 +57,24 @@ export class PaymentService {
   // 设置Discord客户端引用
   static setDiscordClient(client) {
     discordClient = client;
+    // 同时设置备用服务的客户端
+    PaymentFallbackService.setDiscordClient(client);
     console.log('✅ PaymentService已连接Discord客户端');
   }
 
-  // 创建充值结账会话
+  // 检查是否应该使用备用模式
+  static shouldUseFallbackMode() {
+    return PaymentFallbackService.shouldUseFallbackMode();
+  }
+
+  // 创建充值结账会话（带备用模式支持）
   static async createRechargeSession(userId, packageKey) {
+    // 首先检查是否应该直接使用备用模式
+    if (this.shouldUseFallbackMode()) {
+      console.log('🔄 自动启用备用模式：Creem配置不完整或为测试环境');
+      return await PaymentFallbackService.createRechargeSession(userId, packageKey);
+    }
+
     try {
       const packageInfo = DOL_PACKAGES[packageKey];
       if (!packageInfo) {
@@ -69,12 +83,13 @@ export class PaymentService {
 
       const requestId = `aiboyfriend_${userId}_${Date.now()}`;
       
+      console.log('🔄 尝试创建Creem checkout session...');
+      
       // 创建Creem checkout session
       const response = await axios.post(`${CREEM_API_URL}/checkouts`, {
         product_id: packageInfo.product_id,
         request_id: requestId,
         success_url: `${process.env.APP_URL || 'https://aiboyfriend.app'}/payment/success?request_id=${requestId}`,
-        cancel_url: `${process.env.APP_URL || 'https://aiboyfriend.app'}/payment/cancel?request_id=${requestId}`,
         metadata: {
           discord_user_id: userId,
           package_key: packageKey,
@@ -88,21 +103,31 @@ export class PaymentService {
         headers: {
           'x-api-key': CREEM_API_KEY,
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 10000 // 10秒超时
       });
 
       // 保存充值记录到数据库
       await this.saveRechargeRecord(userId, requestId, packageInfo, 'pending');
 
+      console.log('✅ Creem checkout session创建成功');
       return {
         checkout_url: response.data.checkout_url,
         session_id: response.data.checkout_id,
         request_id: requestId,
-        packageInfo: packageInfo
+        packageInfo: packageInfo,
+        creem_mode: true
       };
 
     } catch (error) {
-      console.error('创建Creem checkout session失败:', error.response?.data || error.message);
+      console.error('❌ Creem checkout session创建失败:', error.response?.data || error.message);
+      
+      // 如果是403错误或其他API问题，自动切换到备用模式
+      if (error.response?.status === 403 || error.response?.status === 401 || error.code === 'ECONNABORTED') {
+        console.log('🔄 Creem API不可用，自动切换到备用模式');
+        return await PaymentFallbackService.createRechargeSession(userId, packageKey);
+      }
+      
       throw new Error('创建支付会话失败，请稍后重试');
     }
   }
@@ -111,7 +136,7 @@ export class PaymentService {
   static async saveRechargeRecord(userId, requestId, packageInfo, status) {
     try {
       // 使用现有的ProfileService记录事件
-      await ProfileService.logABEvent(userId, 'recharge_initiated', 's', {
+      await ProfileService.logABEvent(userId, 'recharge_initiated', 'P', {
         request_id: requestId,
         package_name: packageInfo.name,
         amount_usd: packageInfo.amount_usd,
@@ -144,7 +169,7 @@ export class PaymentService {
       });
 
       // 2. 记录支付成功事件
-      await ProfileService.logABEvent(userId, 'payment_completed', 's', {
+      await ProfileService.logABEvent(userId, 'payment_completed', 'P', {
         request_id: request_id,
         package_key: packageKey,
         dol_amount: dolAmount,
@@ -181,7 +206,7 @@ export class PaymentService {
       console.log(`收到支付失败webhook: 用户${userId}, 原因: ${failure_reason}`);
 
       // 记录支付失败事件
-      await ProfileService.logABEvent(userId, 'payment_failed', 's', {
+      await ProfileService.logABEvent(userId, 'payment_failed', 'P', {
         request_id: request_id,
         package_key: packageKey,
         failure_reason: failure_reason,
@@ -364,6 +389,11 @@ export class PaymentService {
 
   // 生成充值消息内容
   static generateRechargeMessage(packageKey) {
+    // 检查是否应该使用备用模式
+    if (this.shouldUseFallbackMode()) {
+      return PaymentFallbackService.generateRechargeMessage(packageKey);
+    }
+
     const packageInfo = DOL_PACKAGES[packageKey];
     if (!packageInfo) return null;
 

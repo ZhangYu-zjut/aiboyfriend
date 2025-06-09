@@ -343,7 +343,7 @@ export class ProactiveChatService {
   // 记录主动消息事件
   static async recordProactiveMessage(userId) {
     try {
-      await ProfileService.logABEvent(userId, 'proactive_message_sent', 'S', {
+      await ProfileService.logABEvent(userId, 'proactive_message_sent', 'P', {
         timestamp: new Date().toISOString(),
         message_type: 'proactive_chat'
       });
