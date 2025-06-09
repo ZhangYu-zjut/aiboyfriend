@@ -133,7 +133,7 @@ export class CooldownService {
     }
 
     try {
-      await ProfileService.logABEvent(userId, 'intimacy_gained', 'SYSTEM', {
+      await ProfileService.logABEvent(userId, 'intimacy_gained', 'S', {
         intimacy_gain: gain,
         het_value: het,
         emotion_score: emotionScore,

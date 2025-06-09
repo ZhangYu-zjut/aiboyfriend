@@ -4,6 +4,8 @@ import { ProfileService, SessionService } from './services/database.js';
 import { EmotionService } from './services/emotion.js';
 import { AIService } from './services/ai.js';
 import { WebhookService } from './services/webhook.js';
+import { PaymentService } from './services/payment.js';
+import { startWebhookServer } from './services/webhook.js';
 import { commands, SlashCommandHandler } from './commands/slashCommands.js';
 import { RelationshipService } from './services/relationship.js';
 import { ProactiveChatService } from './services/proactive.js';
@@ -101,11 +103,23 @@ function setupBotEvents(client) {
   client.on(Events.ClientReady, async () => {
     console.log(`🎉 AI男友机器人已上线: ${client.user.tag}`);
     
+    // 设置PaymentService的Discord客户端引用
+    PaymentService.setDiscordClient(client);
+    
     // 注册斜杠命令
     await registerCommands(client);
     
-    // 启动webhook服务器
-    WebhookService.startWebhookServer();
+    // 启动webhook服务器（支付功能）- 只有在单独启动时才启动
+    if (!process.env.WEBHOOK_STARTED || process.env.WEBHOOK_STARTED === 'false') {
+      try {
+        startWebhookServer();
+        console.log('🎣 支付Webhook服务器已启动');
+      } catch (error) {
+        console.error('❌ Webhook服务器启动失败:', error);
+      }
+    } else {
+      console.log('🎣 Webhook服务器已在外部启动');
+    }
     
     // 设置每日重置任务
     WebhookService.setupDailyReset();
@@ -113,7 +127,7 @@ function setupBotEvents(client) {
     // 🆕 启动主动私聊服务
     if (FEATURE_FLAGS.PROACTIVE_CHAT) {
       console.log('🚀 启动主动私聊服务...');
-      ProactiveChatService.startService(client);
+      ProactiveChatService.startScheduler(client);
       console.log('✅ 主动私聊服务已启动');
     } else {
       console.log('⚪ 主动私聊服务已禁用');
@@ -400,34 +414,58 @@ function setupBotEvents(client) {
     }
   });
 
-  // 处理斜杠命令
+  // 处理斜杠命令和按钮交互
   client.on(Events.InteractionCreate, async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    
     try {
-      switch (interaction.commandName) {
-        case 'stats':
-          await SlashCommandHandler.handleStats(interaction);
-          break;
-        case 'topup':
-          await SlashCommandHandler.handleTopup(interaction);
-          break;
-        case 'shop':
-          await SlashCommandHandler.handleShop(interaction);
-          break;
-        case 'leaderboard':
-          await SlashCommandHandler.handleLeaderboard(interaction);
-          break;
-        case 'help':
-          await SlashCommandHandler.handleHelp(interaction);
-          break;
-        default:
-          await interaction.reply('❌ 未知命令！使用 `/help` 查看所有可用命令。');
+      if (interaction.isChatInputCommand()) {
+        // 处理斜杠命令
+        switch (interaction.commandName) {
+          case 'stats':
+            await SlashCommandHandler.handleStats(interaction);
+            break;
+          case 'recharge':
+            await SlashCommandHandler.handleRecharge(interaction);
+            break;
+          case 'shop':
+            await SlashCommandHandler.handleShop(interaction);
+            break;
+          case 'leaderboard':
+            await SlashCommandHandler.handleLeaderboard(interaction);
+            break;
+          case 'help':
+            await SlashCommandHandler.handleHelp(interaction);
+            break;
+          default:
+            await interaction.reply('❌ 未知命令！使用 `/help` 查看所有可用命令。');
+        }
+      } else if (interaction.isButton()) {
+        // 处理按钮交互
+        const buttonId = interaction.customId;
+        
+        if (buttonId.startsWith('recharge_')) {
+          // 处理充值按钮
+          const packageKey = buttonId.replace('recharge_', '');
+          await SlashCommandHandler.processRecharge(interaction, packageKey);
+        } else if (buttonId === 'cancel_recharge') {
+          // 处理取消充值按钮
+          await interaction.reply({
+            content: '❌ 充值已取消。如果需要继续充值，请使用 `/recharge` 命令。',
+            ephemeral: true
+          });
+        } else {
+          await interaction.reply({
+            content: '❌ 未知的按钮操作！',
+            ephemeral: true
+          });
+        }
       }
     } catch (error) {
-      console.error('处理斜杠命令时出错:', error);
-      if (!interaction.replied) {
-        await interaction.reply('❌ 命令执行时出现错误，请稍后再试！');
+      console.error('处理交互时出错:', error);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: '❌ 处理请求时出现错误，请稍后再试！',
+          ephemeral: true
+        });
       }
     }
   });

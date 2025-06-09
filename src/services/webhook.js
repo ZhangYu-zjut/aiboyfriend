@@ -1,5 +1,6 @@
 import express from 'express';
-import { ProfileService, PaymentService } from './database.js';
+import { ProfileService } from './database.js';
+import { PaymentService } from './payment.js';
 import { GAME_CONFIG } from '../config/settings.js';
 
 const app = express();
@@ -7,66 +8,135 @@ app.use(express.json());
 
 export class WebhookService {
   static startWebhookServer() {
-    const port = process.env.PORT || 3000;
+    const port = process.env.WEBHOOK_PORT || 3001; // 统一使用3001端口
 
-    // Creem支付回调
-    app.post('/api/webhook/creem', async (req, res) => {
+    // Creem支付回调 - 修正路由路径
+    app.post('/webhook/creem', async (req, res) => {
       try {
+        console.log('🎯 收到Creem webhook:', req.body);
+        
         const { event_type, data } = req.body;
         
-        if (event_type === 'payment.completed') {
-          const { customer_id, metadata, amount } = data;
-          const userId = customer_id || metadata.user_id;
-          const dolAmount = parseInt(metadata.dol_amount);
-          const paymentId = data.id;
-
-          // 确认支付并发放DOL
-          await PaymentService.confirmPayment(paymentId);
+        // 验证webhook签名（如果有配置密钥）
+        const signature = req.headers['creem-signature'] || req.headers['x-creem-signature'];
+        if (process.env.CREEM_WEBHOOK_SECRET && signature) {
+          const isValid = await PaymentService.verifyWebhookSignature(req.body, signature);
+          if (!isValid) {
+            console.error('❌ Webhook签名验证失败');
+            return res.status(401).json({ error: 'Invalid signature' });
+          }
+        }
+        
+        if (event_type === 'checkout.completed' || event_type === 'payment.completed') {
+          // 支付成功处理
+          console.log('✅ 处理支付成功事件...');
+          const result = await PaymentService.handlePaymentSuccess(req.body);
           
-          console.log(`✅ 支付完成: 用户 ${userId} 获得 ${dolAmount} DOL`);
+          if (result.success) {
+            console.log(`✅ 用户 ${result.userId} 充值成功: +${result.dolAmount} DOL`);
+          }
           
-          // 记录A/B测试事件
-          const profile = await ProfileService.getOrCreateProfile(userId);
-          await ProfileService.logABEvent(userId, 'payment_completed', profile.ab_group, {
-            amount,
-            dol_amount: dolAmount,
-            payment_id: paymentId
-          });
+        } else if (event_type === 'checkout.failed' || event_type === 'payment.failed') {
+          // 支付失败处理
+          console.log('❌ 处理支付失败事件...');
+          const result = await PaymentService.handlePaymentFailure(req.body);
+          
+          if (result.userId) {
+            console.log(`❌ 用户 ${result.userId} 充值失败: ${result.reason}`);
+          }
+          
+        } else {
+          console.log(`ℹ️  未处理的事件类型: ${event_type}`);
         }
 
-        res.status(200).json({ status: 'success' });
+        res.status(200).json({ status: 'success', received: true });
+        
       } catch (error) {
-        console.error('处理Creem webhook失败:', error);
+        console.error('❌ 处理Creem webhook失败:', error);
         res.status(500).json({ status: 'error', message: error.message });
       }
     });
 
     // 健康检查端点
     app.get('/health', (req, res) => {
-      res.json({ status: 'ok', timestamp: new Date().toISOString() });
+      res.json({ 
+        status: 'ok', 
+        timestamp: new Date().toISOString(),
+        service: 'AI男友 Webhook服务器',
+        port: port
+      });
     });
 
     // 支付成功页面
     app.get('/payment/success', (req, res) => {
+      const requestId = req.query.request_id;
       res.send(`
         <!DOCTYPE html>
         <html>
         <head>
-          <title>支付成功</title>
+          <title>支付成功 - AI男友</title>
           <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
           <style>
-            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-            .success { color: #28a745; font-size: 24px; }
-            .info { color: #6c757d; margin-top: 20px; }
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              text-align: center; 
+              padding: 50px 20px; 
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              min-height: 100vh;
+              margin: 0;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              align-items: center;
+            }
+            .container {
+              background: rgba(255, 255, 255, 0.1);
+              backdrop-filter: blur(10px);
+              border-radius: 20px;
+              padding: 40px;
+              max-width: 500px;
+              box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            }
+            .success { 
+              color: #4ade80; 
+              font-size: 48px; 
+              margin-bottom: 20px;
+            }
+            .title {
+              font-size: 32px;
+              font-weight: bold;
+              margin-bottom: 15px;
+            }
+            .info { 
+              font-size: 18px; 
+              line-height: 1.6;
+              margin-bottom: 20px;
+            }
+            .note {
+              font-size: 14px;
+              opacity: 0.8;
+              background: rgba(255, 255, 255, 0.1);
+              padding: 15px;
+              border-radius: 10px;
+              margin-top: 20px;
+            }
           </style>
         </head>
         <body>
-          <div class="success">
-            ✅ 支付成功！
-          </div>
-          <div class="info">
-            你的DOL已经自动发放到账户中<br>
-            现在可以回到Discord继续和AI男友聊天了~ 💕
+          <div class="container">
+            <div class="success">✅</div>
+            <div class="title">支付成功！</div>
+            <div class="info">
+              🎉 恭喜！你的DOL已经自动发放到账户中<br>
+              💕 现在可以回到Discord继续和AI男友聊天了~
+            </div>
+            ${requestId ? `<div class="note">充值单号: ${requestId.slice(-8)}</div>` : ''}
+            <div class="note">
+              📱 请返回Discord查看充值通知<br>
+              💎 使用 /stats 命令查看最新余额
+            </div>
           </div>
         </body>
         </html>
@@ -79,21 +149,68 @@ export class WebhookService {
         <!DOCTYPE html>
         <html>
         <head>
-          <title>支付取消</title>
+          <title>支付取消 - AI男友</title>
           <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
           <style>
-            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-            .cancel { color: #dc3545; font-size: 24px; }
-            .info { color: #6c757d; margin-top: 20px; }
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              text-align: center; 
+              padding: 50px 20px; 
+              background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+              color: white;
+              min-height: 100vh;
+              margin: 0;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              align-items: center;
+            }
+            .container {
+              background: rgba(255, 255, 255, 0.1);
+              backdrop-filter: blur(10px);
+              border-radius: 20px;
+              padding: 40px;
+              max-width: 500px;
+              box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            }
+            .cancel { 
+              color: #fbbf24; 
+              font-size: 48px; 
+              margin-bottom: 20px;
+            }
+            .title {
+              font-size: 32px;
+              font-weight: bold;
+              margin-bottom: 15px;
+            }
+            .info { 
+              font-size: 18px; 
+              line-height: 1.6;
+              margin-bottom: 20px;
+            }
+            .note {
+              font-size: 14px;
+              opacity: 0.8;
+              background: rgba(255, 255, 255, 0.1);
+              padding: 15px;
+              border-radius: 10px;
+              margin-top: 20px;
+            }
           </style>
         </head>
         <body>
-          <div class="cancel">
-            ❌ 支付已取消
-          </div>
-          <div class="info">
-            没关系，你随时可以重新购买DOL<br>
-            回到Discord使用 /shop 命令查看所有选项
+          <div class="container">
+            <div class="cancel">💔</div>
+            <div class="title">支付已取消</div>
+            <div class="info">
+              😊 没关系，你随时可以重新购买DOL<br>
+              💫 回到Discord继续和AI男友愉快聊天
+            </div>
+            <div class="note">
+              💰 使用 /recharge 命令重新充值<br>
+              🛍️ 使用 /shop 命令查看所有套餐选项
+            </div>
           </div>
         </body>
         </html>
@@ -102,6 +219,8 @@ export class WebhookService {
 
     app.listen(port, () => {
       console.log(`🌐 Webhook服务器运行在端口 ${port}`);
+      console.log(`📍 Creem Webhook URL: http://localhost:${port}/webhook/creem`);
+      console.log(`🔗 健康检查: http://localhost:${port}/health`);
     });
 
     return app;
@@ -150,8 +269,8 @@ export class WebhookService {
       console.log(`   配置: 重置到 ${GAME_CONFIG.DOL.DAILY_RESET.RESET_AMOUNT} DOL (阈值: ${GAME_CONFIG.DOL.DAILY_RESET.RESET_THRESHOLD})`);
       
       // 调用数据库函数执行重置，使用配置参数
-      const { supabase } = await import('./database.js');
-      const { data, error } = await supabase.rpc('daily_reset_dol', {
+      const { db } = await import('./database.js');
+      const { data, error } = await db.rpc('daily_reset_dol', {
         reset_amount: GAME_CONFIG.DOL.DAILY_RESET.RESET_AMOUNT,
         reset_threshold: GAME_CONFIG.DOL.DAILY_RESET.RESET_THRESHOLD
       });
@@ -168,7 +287,7 @@ export class WebhookService {
       
       // 记录系统事件
       const { ProfileService } = await import('./database.js');
-      await ProfileService.logABEvent('SYSTEM', 'daily_reset_completed', 'SYSTEM', {
+      await ProfileService.logABEvent('SYSTEM', 'daily_reset_completed', 'S', {
         affected_users: result.affected_users,
         total_dol_added: result.total_dol_added,
         reset_amount: GAME_CONFIG.DOL.DAILY_RESET.RESET_AMOUNT,
@@ -187,4 +306,9 @@ export class WebhookService {
       console.error('❌ 每日重置失败:', error);
     }
   }
+} 
+
+// 导出startWebhookServer函数以便在其他文件中使用
+export function startWebhookServer() {
+  return WebhookService.startWebhookServer();
 } 

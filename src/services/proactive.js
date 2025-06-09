@@ -7,6 +7,20 @@ export class ProactiveChatService {
   static isEnabled = FEATURE_FLAGS.PROACTIVE_CHAT;
   static scheduledTask = null;
 
+  // 获取supabase实例
+  static async getSupabase() {
+    try {
+      const { db } = await import('./database.js');
+      if (!db) {
+        throw new Error('数据库实例未找到');
+      }
+      return db;
+    } catch (error) {
+      console.error('❌ 获取数据库实例失败:', error);
+      throw error;
+    }
+  }
+
   // 启动主动私聊调度器
   static startScheduler(discordClient) {
     if (!this.isEnabled) {
@@ -134,6 +148,7 @@ export class ProactiveChatService {
     
     try {
       // 查询符合条件的用户：亲密度 >= 最低要求 且 最后消息时间超过指定小时数
+      const supabase = await this.getSupabase();
       const { data: users, error } = await supabase
         .from('profiles')
         .select(`
@@ -144,7 +159,7 @@ export class ProactiveChatService {
           created_at,
           updated_at
         `)
-        .gte('intimacy', config.MIN_INTIMACY);
+        .gte('intimacy', config.MIN_INTIMACY_REQUIRED);
 
       if (error) {
         console.error('❌ 查询符合条件的用户失败:', error);
@@ -181,6 +196,7 @@ export class ProactiveChatService {
   // 获取用户最后活跃时间
   static async getLastActiveTime(userId) {
     try {
+      const supabase = await this.getSupabase();
       const { data: lastSession, error } = await supabase
         .from('sessions')
         .select('created_at')
@@ -218,6 +234,7 @@ export class ProactiveChatService {
   // 获取今日主动消息数量
   static async getTodayProactiveMessageCount(userId) {
     try {
+      const supabase = await this.getSupabase();
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const tomorrow = new Date(today);
@@ -246,6 +263,7 @@ export class ProactiveChatService {
   // 获取最后一次主动消息时间
   static async getLastProactiveMessageTime(userId) {
     try {
+      const supabase = await this.getSupabase();
       const { data: lastEvent, error } = await supabase
         .from('ab_events')
         .select('created_at')
@@ -325,7 +343,7 @@ export class ProactiveChatService {
   // 记录主动消息事件
   static async recordProactiveMessage(userId) {
     try {
-      await ProfileService.logABEvent(userId, 'proactive_message_sent', 'SYSTEM', {
+      await ProfileService.logABEvent(userId, 'proactive_message_sent', 'S', {
         timestamp: new Date().toISOString(),
         message_type: 'proactive_chat'
       });
@@ -348,6 +366,7 @@ export class ProactiveChatService {
   // 获取主动私聊统计信息
   static async getProactiveStats() {
     try {
+      const supabase = await this.getSupabase();
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const tomorrow = new Date(today);

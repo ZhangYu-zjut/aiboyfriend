@@ -34,21 +34,21 @@ module.exports = {
 
     async execute(interaction) {
         const packageType = interaction.options.getString('package');
-        const package = DOL_PACKAGES[packageType];
+        const packageInfo = DOL_PACKAGES[packageType];
         const userId = interaction.user.id;
 
         try {
             // 创建PayPal订单
-            const order = await createPayPalOrder(package, userId);
+            const order = await createPayPalOrder(packageInfo, userId);
             
             // 创建支付嵌入消息
             const paymentEmbed = new EmbedBuilder()
                 .setTitle('💎 购买DOL虚拟货币')
-                .setDescription(`准备购买 **${package.name}**`)
+                .setDescription(`准备购买 **${packageInfo.name}**`)
                 .addFields(
-                    { name: '💰 价格', value: `$${package.amount}`, inline: true },
-                    { name: '💎 DOL币数量', value: `${package.dol} DOL`, inline: true },
-                    { name: '🎁 性价比', value: `${(package.dol / package.amount).toFixed(0)} DOL/美元`, inline: true },
+                    { name: '💰 价格', value: `$${packageInfo.amount}`, inline: true },
+                    { name: '💎 DOL币数量', value: `${packageInfo.dol} DOL`, inline: true },
+                    { name: '🎁 性价比', value: `${(packageInfo.dol / packageInfo.amount).toFixed(0)} DOL/美元`, inline: true },
                     { name: '⚡ 支付方式', value: '安全的PayPal支付' },
                     { name: '🔒 安全提示', value: '点击下方按钮跳转到PayPal安全支付页面' }
                 )
@@ -79,7 +79,7 @@ module.exports = {
             });
 
             // 保存订单信息到数据库
-            await savePaymentRecord(userId, order.id, package);
+            await savePaymentRecord(userId, order.id, packageInfo);
 
         } catch (error) {
             console.error('PayPal支付创建失败:', error);
@@ -98,7 +98,7 @@ module.exports = {
 };
 
 // 创建PayPal订单
-async function createPayPalOrder(package, userId) {
+async function createPayPalOrder(packageInfo, userId) {
     const request = new paypal.orders.OrdersCreateRequest();
     request.prefer("return=representation");
     request.requestBody({
@@ -106,9 +106,9 @@ async function createPayPalOrder(package, userId) {
         purchase_units: [{
             amount: {
                 currency_code: 'USD',
-                value: package.amount.toFixed(2)
+                value: packageInfo.amount.toFixed(2)
             },
-            description: `AI男友DOL币购买 - ${package.name}`,
+            description: `AI男友DOL币购买 - ${packageInfo.name}`,
             custom_id: userId, // 用于识别用户
             soft_descriptor: 'AI_BOYFRIEND_DOL'
         }],
@@ -127,7 +127,7 @@ async function createPayPalOrder(package, userId) {
 }
 
 // 保存支付记录到数据库
-async function savePaymentRecord(userId, paypalOrderId, package) {
+async function savePaymentRecord(userId, paypalOrderId, packageInfo) {
     // 这里连接到你的Supabase数据库
     const { supabase } = require('../services/database');
     
@@ -136,9 +136,9 @@ async function savePaymentRecord(userId, paypalOrderId, package) {
         .insert({
             user_id: userId,
             paypal_order_id: paypalOrderId,
-            package_type: package.name,
-            amount_usd: package.amount,
-            dol_amount: package.dol,
+            package_type: packageInfo.name,
+            amount_usd: packageInfo.amount,
+            dol_amount: packageInfo.dol,
             status: 'pending',
             created_at: new Date().toISOString()
         });

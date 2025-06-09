@@ -5,23 +5,30 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
+    "start:payment": "node start-payment-bot.js",
+    "start:ngrok": "./start-with-ngrok.sh",
     "dev": "node --watch src/index.js",
     "debug": "node scripts/debug-services.js",
     "test:emotion": "node scripts/test-emotion-analysis.js",
-    "test:all": "npm run debug && npm run test:emotion",
+    "test:payment": "node test-payment-integration.js",
+    "test:webhook": "node test-payment-webhook-fix.js",
+    "test:all": "npm run debug && npm run test:emotion && npm run test:payment",
     "fix:database": "node scripts/fix-database.js",
     "setup": "npm run fix:database && npm run debug",
-    "generate-invite": "node scripts/generate-invite-link.js"
+    "generate-invite": "node scripts/generate-invite-link.js",
+    "webhook": "node src/services/webhook.js"
   },
   "keywords": [
     "discord",
     "ai",
     "chatbot",
-    "boyfriend"
+    "boyfriend",
+    "payment",
+    "creem"
   ],
   "author": "",
   "license": "ISC",
-  "description": "AI Boyfriend Discord Bot for Chinese users",
+  "description": "AI Boyfriend Discord Bot with Creem Payment Integration",
   "dependencies": {
     "@huggingface/inference": "^4.0.0",
     "@supabase/supabase-js": "^2.45.4",

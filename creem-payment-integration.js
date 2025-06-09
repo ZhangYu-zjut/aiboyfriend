@@ -56,28 +56,45 @@ module.exports = {
 
     async execute(interaction) {
         const packageType = interaction.options.getString('package');
-        const package = DOL_PACKAGES[packageType];
+        const packageInfo = DOL_PACKAGES[packageType];
         const userId = interaction.user.id;
         const userName = interaction.user.username;
+
+        if (!packageInfo) {
+            const errorEmbed = new EmbedBuilder()
+                .setTitle('❌ 充值失败')
+                .setDescription('抱歉，无法找到指定的充值套餐，请稍后重试。')
+                .addFields(
+                    { name: '🔧 可能原因', value: '- 输入的套餐不存在\n- 系统维护中' },
+                    { name: '💡 解决方案', value: '请检查套餐名称或联系客服' }
+                )
+                .setColor(0xFF6B6B);
+
+            await interaction.reply({
+                embeds: [errorEmbed],
+                ephemeral: true
+            });
+            return;
+        }
 
         try {
             // 生成唯一的请求ID
             const requestId = `dol_${userId}_${Date.now()}`;
             
             // 创建Creem checkout session
-            const checkoutSession = await createCreemCheckoutSession(package, userId, userName, requestId);
+            const checkoutSession = await createCreemCheckoutSession(packageInfo, userId, userName, requestId);
             
             // 保存充值记录到数据库
-            await saveRechargeRecord(userId, requestId, package, 'pending');
+            await saveRechargeRecord(userId, requestId, packageInfo, 'pending');
             
             // 创建充值嵌入消息
             const rechargeEmbed = new EmbedBuilder()
                 .setTitle('💳 充值DOL虚拟货币')
-                .setDescription(`🎯 准备充值 **${package.name}**`)
+                .setDescription(`🎯 准备充值 **${packageInfo.name}**`)
                 .addFields(
-                    { name: '💰 价格', value: `$${package.amount}`, inline: true },
-                    { name: '💎 DOL币数量', value: `${package.dol} DOL`, inline: true },
-                    { name: '🎁 性价比', value: `${(package.dol / package.amount).toFixed(0)} DOL/美元`, inline: true },
+                    { name: '💰 价格', value: `$${packageInfo.amount}`, inline: true },
+                    { name: '💎 DOL币数量', value: `${packageInfo.dol} DOL`, inline: true },
+                    { name: '🎁 性价比', value: `${(packageInfo.dol / packageInfo.amount).toFixed(0)} DOL/美元`, inline: true },
                     { name: '🔒 支付方式', value: 'Visa、MasterCard、American Express等信用卡' },
                     { name: '⚡ 安全保障', value: 'Creem提供银行级别的支付安全保护' },
                     { name: '💡 温馨提示', value: '支付完成后DOL币将在1分钟内自动到账' }
@@ -148,17 +165,17 @@ module.exports = {
 };
 
 // 创建Creem checkout session
-async function createCreemCheckoutSession(package, userId, userName, requestId) {
+async function createCreemCheckoutSession(packageInfo, userId, userName, requestId) {
     try {
         const response = await axios.post(`${CREEM_API_URL}/checkouts`, {
-            product_id: package.product_id,
+            product_id: packageInfo.product_id,
             request_id: requestId,
             success_url: `${process.env.WEBSITE_URL}/payment/success?request_id=${requestId}`,
             metadata: {
                 discord_user_id: userId,
                 discord_username: userName,
-                package_type: package.name,
-                dol_amount: package.dol.toString()
+                package_type: packageInfo.name,
+                dol_amount: packageInfo.dol.toString()
             },
             customer: {
                 email: `${userId}@discord.aiboyfriend.app` // 生成唯一邮箱
@@ -178,16 +195,16 @@ async function createCreemCheckoutSession(package, userId, userName, requestId) 
 }
 
 // 保存充值记录到数据库
-async function saveRechargeRecord(userId, requestId, package, status) {
+async function saveRechargeRecord(userId, requestId, packageInfo, status) {
     try {
         const { error } = await supabase
             .from('recharge_records')
             .insert({
                 user_id: userId,
                 request_id: requestId,
-                package_type: package.name,
-                amount_usd: package.amount,
-                dol_amount: package.dol,
+                package_type: packageInfo.name,
+                amount_usd: packageInfo.amount,
+                dol_amount: packageInfo.dol,
                 status: status,
                 created_at: new Date().toISOString()
             });

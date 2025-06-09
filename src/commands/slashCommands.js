@@ -1,6 +1,6 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { ProfileService } from '../services/database.js';
-import { CreemPaymentService } from '../services/payment.js';
+import { PaymentService, DOL_PACKAGES } from '../services/payment.js';
 
 export const commands = [
   // 查看用户统计信息
@@ -10,17 +10,17 @@ export const commands = [
 
   // 充值DOL
   new SlashCommandBuilder()
-    .setName('topup')
-    .setDescription('购买DOL继续聊天')
+    .setName('recharge')
+    .setDescription('充值DOL继续和AI男友聊天')
     .addStringOption(option =>
       option.setName('package')
-        .setDescription('选择充值包')
+        .setDescription('选择充值套餐')
         .setRequired(false)
         .addChoices(
-          { name: '基础包 - 100 DOL ($1.99)', value: 'dol_100' },
-          { name: '标准包 - 500 DOL ($4.99)', value: 'dol_500' },
-          { name: '超值包 - 1000 DOL ($8.99)', value: 'dol_1000' },
-          { name: '豪华包 - 2500 DOL ($19.99)', value: 'dol_2500' }
+          { name: '🌟 新手包 - 450 DOL ($4.5/¥32.4)', value: 'starter' },
+          { name: '💝 基础包 - 1000 DOL ($9.9/¥71.3)', value: 'basic' },
+          { name: '💎 标准包 - 2200 DOL ($19.9/¥143.3)', value: 'standard' },
+          { name: '👑 至尊包 - 6000 DOL ($49.9/¥359.3)', value: 'premium' }
         )),
 
   // 查看商店
@@ -89,118 +89,171 @@ export class SlashCommandHandler {
     }
   }
 
-  // 处理topup命令
-  static async handleTopup(interaction) {
+  // 处理recharge命令
+  static async handleRecharge(interaction) {
     try {
       const userId = interaction.user.id;
-      const packageId = interaction.options.getString('package');
+      const packageKey = interaction.options.getString('package');
 
-      if (!packageId) {
-        // 显示商店选项
-        const shopEmbed = new EmbedBuilder()
-          .setColor('#00D2FF')
-          .setTitle('🛍️ DOL商店')
-          .setDescription(CreemPaymentService.generateProductMenu())
-          .setFooter({ text: '使用 /topup <包名> 来购买对应的包' });
+      if (!packageKey) {
+        // 显示充值套餐选择界面
+        const packages = PaymentService.getPackageList();
+        
+        const embed = new EmbedBuilder()
+          .setColor('#FFD700')
+          .setTitle('💰 DOL充值中心')
+          .setDescription('选择合适的充值套餐，和AI男友继续甜蜜聊天 💕')
+          .setThumbnail('https://cdn.discordapp.com/emojis/741885777617133659.png?v=1');
 
-        return interaction.reply({ embeds: [shopEmbed] });
+        // 添加所有套餐信息
+        packages.forEach(pkg => {
+          embed.addFields({
+            name: `${pkg.emoji} ${pkg.name}`,
+            value: `💰 $${pkg.amount_usd} (约￥${pkg.amount_cny})\n💎 获得 ${pkg.dol} DOL\n⚡ ${(pkg.dol / pkg.amount_usd).toFixed(0)} DOL/美元`,
+            inline: true
+          });
+        });
+
+        embed.addFields({
+          name: '💳 支付方式',
+          value: '支持信用卡付款、若没有信用卡，可以联系开发者进行微信或者支付宝支付',
+          inline: false
+        });
+
+        embed.addFields({
+          name: '📧 联系方式',
+          value: '有任何问题，请联系：changyu6899@gmail.com',
+          inline: false
+        });
+
+        embed.setFooter({ text: '使用 /recharge <套餐> 来选择具体套餐' });
+
+        // 创建快速选择按钮
+        const row = new ActionRowBuilder()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId('recharge_starter')
+              .setLabel('🌟 新手包')
+              .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+              .setCustomId('recharge_basic')
+              .setLabel('💝 基础包')
+              .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+              .setCustomId('recharge_standard')
+              .setLabel('💎 标准包')
+              .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+              .setCustomId('recharge_premium')
+              .setLabel('👑 至尊包')
+              .setStyle(ButtonStyle.Danger)
+          );
+
+        return interaction.reply({ embeds: [embed], components: [row] });
       }
 
-      // 创建支付链接
-      const checkout = await CreemPaymentService.createCheckout(userId, packageId);
+      // 处理具体套餐充值
+      await this.processRecharge(interaction, packageKey);
+
+    } catch (error) {
+      console.error('Recharge命令处理失败:', error);
+      await interaction.reply('❌ 处理充值请求时出现错误，请稍后再试！');
+    }
+  }
+
+  // 处理具体的充值逻辑
+  static async processRecharge(interaction, packageKey) {
+    try {
+      const userId = interaction.user.id;
       
-      const paymentEmbed = new EmbedBuilder()
-        .setColor('#00FF00')
-        .setTitle('💳 支付链接已生成')
-        .setDescription(`**商品**: ${checkout.product.name}\n**价格**: $${checkout.product.amount} USD\n**获得**: ${checkout.product.dol} DOL`)
-        .addFields(
-          { name: '支付链接', value: `[点击这里支付](${checkout.checkout_url})` },
-          { name: '注意事项', value: '• 支付完成后DOL会自动发放\n• 如有问题请联系客服\n• 支付链接30分钟内有效' }
+      // 创建支付会话
+      const session = await PaymentService.createRechargeSession(userId, packageKey);
+      const messageData = PaymentService.generateRechargeMessage(packageKey);
+      
+      const embed = new EmbedBuilder()
+        .setColor(messageData.color)
+        .setTitle(`💳 ${messageData.title}`)
+        .setDescription(messageData.description)
+        .addFields(messageData.fields)
+        .addFields({
+          name: '🔒 安全保障',
+          value: 'Creem提供银行级别的支付安全保护',
+          inline: false
+        })
+        .addFields({
+          name: '⚡ 到账时间',
+          value: '支付完成后DOL将在1分钟内自动到账',
+          inline: false
+        })
+        .setFooter({ text: messageData.footer })
+        .setTimestamp();
+
+      // 创建支付按钮
+      const row = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setLabel('💳 立即充值')
+            .setStyle(ButtonStyle.Link)
+            .setURL(session.checkout_url)
+            .setEmoji('💰'),
+          new ButtonBuilder()
+            .setLabel('❌ 取消充值')
+            .setStyle(ButtonStyle.Secondary)
+            .setCustomId('cancel_recharge')
+            .setEmoji('❌')
         );
 
-      if (checkout.is_fallback) {
-        paymentEmbed.addFields({
-          name: '⚠️ 备用支付方式',
-          value: checkout.instructions
-        });
-      }
+      await interaction.reply({
+        embeds: [embed],
+        components: [row],
+        ephemeral: true // 只有用户自己能看到
+      });
 
-      await interaction.reply({ embeds: [paymentEmbed], ephemeral: true });
+      console.log(`✅ 充值链接已生成: 用户${userId}, 套餐${packageKey}, 链接${session.checkout_url}`);
+
     } catch (error) {
-      console.error('Topup命令处理失败:', error);
-      await interaction.reply('❌ 创建支付链接时出现错误，请稍后再试！');
+      console.error('处理具体充值失败:', error);
+      await interaction.reply({
+        content: '❌ 创建支付链接失败，请稍后重试或联系客服',
+        ephemeral: true
+      });
     }
   }
 
   // 处理shop命令
   static async handleShop(interaction) {
-    const shopEmbed = new EmbedBuilder()
+    const packages = PaymentService.getPackageList();
+    
+    const embed = new EmbedBuilder()
       .setColor('#FFD700')
-      .setTitle('🛍️ DOL商店 - 继续和我聊天吧！')
-      .setDescription('选择合适的充值包，让我们的对话更持久 💕')
-      .addFields(
-        {
-          name: '💎 基础包 - $1.99',
-          value: '100 DOL\n适合轻度聊天用户\n`/topup dol_100`',
-          inline: true
-        },
-        {
-          name: '🌟 标准包 - $4.99',
-          value: '500 DOL\n最受欢迎的选择\n`/topup dol_500`',
-          inline: true
-        },
-        {
-          name: '✨ 超值包 - $8.99',
-          value: '1000 DOL\n高性价比推荐\n`/topup dol_1000`',
-          inline: true
-        },
-        {
-          name: '👑 豪华包 - $19.99',
-          value: '2500 DOL\n土豪专享\n`/topup dol_2500`',
-          inline: true
-        },
-        {
-          name: '💡 关于DOL',
-          value: 'DOL是AI男友平台专属虚拟货币\n每条消息消耗30 DOL\n每日凌晨免费重置\n高情感对话有额外奖励',
-          inline: false
-        }
-      )
-      .setFooter({ text: '💖 支持我们，让AI男友变得更好！' });
+      .setTitle('🛍️ DOL商店 - 继续和AI男友甜蜜聊天！')
+      .setDescription('选择合适的充值包，让我们的对话更持久 💕\n\n**💎 什么是DOL？**\nDOL是AI男友平台专属虚拟货币，用于聊天消费和功能解锁，每条消息消耗30 DOL')
+      .setThumbnail('https://cdn.discordapp.com/emojis/741885777617133659.png?v=1');
 
-    await interaction.reply({ embeds: [shopEmbed] });
-  }
+    // 添加所有套餐
+    packages.forEach(pkg => {
+      embed.addFields({
+        name: `${pkg.emoji} ${pkg.name}`,
+        value: `💰 **$${pkg.amount_usd}** (约￥${pkg.amount_cny})\n💎 获得 **${pkg.dol} DOL**\n⚡ 性价比: ${(pkg.dol / pkg.amount_usd).toFixed(0)} DOL/美元\n📝 ${pkg.description}`,
+        inline: true
+      });
+    });
 
-  // 处理help命令
-  static async handleHelp(interaction) {
-    const helpEmbed = new EmbedBuilder()
-      .setColor('#9932CC')
-      .setTitle('📖 使用帮助 - AI男友使用指南')
-      .setDescription('欢迎使用AI男友！这里是完整的使用指南 💕')
-      .addFields(
-        {
-          name: '💬 聊天功能',
-          value: '• 直接发消息和我聊天\n• 每条消息消耗30 DOL\n• 我会记住我们的对话历史\n• 情感化的对话会增加亲密度',
-          inline: false
-        },
-        {
-          name: '📊 斜杠命令',
-          value: '• `/stats` - 查看个人数据\n• `/shop` - 查看DOL商店\n• `/topup` - 购买DOL\n• `/leaderboard` - 查看亲密度排行榜\n• `/help` - 查看帮助',
-          inline: false
-        },
-        {
-          name: '💖 亲密度系统',
-          value: '• 通过温馨的对话提升亲密度\n• 亲密度越高，我的回复越甜蜜\n• 特殊节日会有亲密度加成',
-          inline: false
-        },
-        {
-          name: '💎 DOL系统',
-          value: '• DOL是AI男友平台专属虚拟货币\n• 每日免费获得300-400 DOL\n• 用完可以通过充值获得更多\n• 高情感对话有DOL奖励',
-          inline: false
-        }
-      )
-      .setFooter({ text: '有任何问题都可以直接问我哦~ 💕' });
+    embed.addFields({
+      name: '💳 支付说明',
+      value: '• 支持信用卡付款（Visa、MasterCard等）\n• 若没有信用卡，可联系开发者微信/支付宝支付\n• 支付完成后DOL自动到账（约1分钟）',
+      inline: false
+    });
 
-    await interaction.reply({ embeds: [helpEmbed] });
+    embed.addFields({
+      name: '📧 客服联系',
+      value: '有任何问题，请联系：**changyu6899@gmail.com**',
+      inline: false
+    });
+
+    embed.setFooter({ text: '使用 /recharge 命令开始充值 💖' });
+
+    await interaction.reply({ embeds: [embed] });
   }
 
   // 处理leaderboard命令
@@ -256,6 +309,39 @@ export class SlashCommandHandler {
       console.error('Leaderboard命令处理失败:', error);
       await interaction.reply('❌ 获取排行榜时出现错误，请稍后再试！');
     }
+  }
+
+  // 处理help命令
+  static async handleHelp(interaction) {
+    const helpEmbed = new EmbedBuilder()
+      .setColor('#9932CC')
+      .setTitle('📖 使用帮助 - AI男友使用指南')
+      .setDescription('欢迎使用AI男友！这里是完整的使用指南 💕')
+      .addFields(
+        {
+          name: '💬 聊天功能',
+          value: '• 直接发消息和我聊天\n• 每条消息消耗30 DOL\n• 我会记住我们的对话历史\n• 情感化的对话会增加亲密度',
+          inline: false
+        },
+        {
+          name: '📊 斜杠命令',
+          value: '• `/stats` - 查看个人数据\n• `/shop` - 查看DOL商店\n• `/recharge` - 充值DOL\n• `/leaderboard` - 查看亲密度排行榜\n• `/help` - 查看帮助',
+          inline: false
+        },
+        {
+          name: '💖 亲密度系统',
+          value: '• 通过温馨的对话提升亲密度\n• 亲密度越高，我的回复越甜蜜\n• 特殊节日会有亲密度加成',
+          inline: false
+        },
+        {
+          name: '💎 DOL系统',
+          value: '• DOL是AI男友平台专属虚拟货币\n• 每日免费获得300-400 DOL\n• 用完可以通过充值获得更多\n• 高情感对话有DOL奖励',
+          inline: false
+        }
+      )
+      .setFooter({ text: '有任何问题都可以直接问我哦~ 💕' });
+
+    await interaction.reply({ embeds: [helpEmbed] });
   }
 
   // 获取亲密度等级
