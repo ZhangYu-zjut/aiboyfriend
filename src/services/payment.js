@@ -85,11 +85,15 @@ export class PaymentService {
       
       console.log('🔄 尝试创建Creem checkout session...');
       
+      // 确定正确的回调URL
+      const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
+      const baseUrl = process.env.APP_URL || (isProduction ? 'https://aiboyfriend-production.up.railway.app' : 'http://localhost:3000');
+      
       // 创建Creem checkout session
       const response = await axios.post(`${CREEM_API_URL}/checkouts`, {
         product_id: packageInfo.product_id,
         request_id: requestId,
-        success_url: `${process.env.APP_URL || 'https://aiboyfriend.app'}/payment/success?request_id=${requestId}`,
+        success_url: `${baseUrl}/payment/success?request_id=${requestId}`,
         metadata: {
           discord_user_id: userId,
           package_key: packageKey,

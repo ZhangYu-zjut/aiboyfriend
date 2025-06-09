@@ -4,9 +4,11 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node railway-start.js",
+    "start:dev": "node src/index.js",
     "start:payment": "node start-payment-bot.js",
     "start:ngrok": "./start-with-ngrok.sh",
+    "railway": "node railway-start.js",
     "dev": "node --watch src/index.js",
     "debug": "node scripts/debug-services.js",
     "test:emotion": "node scripts/test-emotion-analysis.js",

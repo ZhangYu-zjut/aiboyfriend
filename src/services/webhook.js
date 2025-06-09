@@ -8,7 +8,10 @@ app.use(express.json());
 
 export class WebhookService {
   static startWebhookServer() {
-    const port = process.env.WEBHOOK_PORT || 3001; // 统一使用3001端口
+    // Railway要求使用$PORT环境变量，本地开发使用3001
+    const port = process.env.PORT || process.env.WEBHOOK_PORT || 3001;
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
+    const baseUrl = process.env.APP_URL || (isProduction ? 'https://aiboyfriend-production.up.railway.app' : 'http://localhost:3000');
 
     // Creem支付回调 - 修正路由路径
     app.post('/webhook/creem', async (req, res) => {
@@ -217,10 +220,16 @@ export class WebhookService {
       `);
     });
 
-    app.listen(port, () => {
+    app.listen(port, '0.0.0.0', () => {
       console.log(`🌐 Webhook服务器运行在端口 ${port}`);
-      console.log(`📍 Creem Webhook URL: http://localhost:${port}/webhook/creem`);
-      console.log(`🔗 健康检查: http://localhost:${port}/health`);
+      
+      if (isProduction) {
+        console.log(`📍 Creem Webhook URL: ${baseUrl}/webhook/creem`);
+        console.log(`🔗 健康检查: ${baseUrl}/health`);
+      } else {
+        console.log(`📍 Creem Webhook URL: http://localhost:${port}/webhook/creem`);
+        console.log(`🔗 健康检查: http://localhost:${port}/health`);
+      }
     });
 
     return app;
