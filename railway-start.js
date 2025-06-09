@@ -17,7 +17,7 @@ if (process.env.PORT) {
   console.log('⚠️  未检测到Railway PORT环境变量');
 }
 
-// 设置正确的APP_URL
+// 设置正确的APP_URL - 修复重复路径问题
 if (!process.env.APP_URL && process.env.RAILWAY_STATIC_URL) {
   process.env.APP_URL = process.env.RAILWAY_STATIC_URL;
   console.log(`✅ 使用Railway URL: ${process.env.APP_URL}`);
@@ -27,14 +27,30 @@ if (!process.env.APP_URL && process.env.RAILWAY_STATIC_URL) {
 } else {
   // 清理APP_URL，移除可能的额外路径
   let cleanUrl = process.env.APP_URL;
+  
+  // 移除常见的错误路径
   if (cleanUrl.includes('/webhook/creem')) {
     cleanUrl = cleanUrl.replace('/webhook/creem', '');
+    console.log('🔧 移除了重复的webhook路径');
   }
+  
+  if (cleanUrl.includes('/webhook')) {
+    cleanUrl = cleanUrl.replace('/webhook', '');
+    console.log('🔧 移除了webhook路径');
+  }
+  
+  // 移除末尾的斜杠
   if (cleanUrl.endsWith('/')) {
     cleanUrl = cleanUrl.slice(0, -1);
   }
+  
+  // 确保使用https协议
+  if (!cleanUrl.startsWith('http')) {
+    cleanUrl = 'https://' + cleanUrl;
+  }
+  
   process.env.APP_URL = cleanUrl;
-  console.log(`✅ 使用配置的URL (已清理): ${process.env.APP_URL}`);
+  console.log(`✅ 使用清理后的URL: ${process.env.APP_URL}`);
 }
 
 // 显示关键配置信息
@@ -65,8 +81,9 @@ for (const varName of creemVars) {
 
 if (allCreemConfigured) {
   console.log('\n🎯 Creem Webhook配置:');
-  console.log(`📍 Webhook URL: ${process.env.APP_URL}/webhook/creem`);
+  console.log(`📍 正确的Webhook URL: ${process.env.APP_URL}/webhook/creem`);
   console.log('💡 请确保在Creem Dashboard中配置此Webhook URL');
+  console.log('⚠️  常见错误: 不要在URL末尾添加额外的路径');
 } else {
   console.log('\n⚠️  Creem配置不完整，支付功能将使用备用模式');
 }
